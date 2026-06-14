@@ -1,0 +1,27 @@
+# Local agent state
+.agents/
+.codex/
+
+# CMake and build outputs
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
+# Compiled artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
