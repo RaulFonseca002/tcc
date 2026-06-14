@@ -55,6 +55,9 @@ public:
     bool has_component_named(ComponentType<Component> type, const std::string& name) const;
 
     template <typename Component>
+    ComponentSlotId component_slot(ComponentType<Component> type, const std::string& name) const;
+
+    template <typename Component>
     Component* get_component_named(ComponentType<Component> type, const std::string& name);
 
     template <typename Component>
@@ -88,6 +91,9 @@ public:
 
     template <typename Component>
     bool can_write(ComponentType<Component> type, BehaviorId behavior, const std::string& name) const;
+
+    template <typename Component>
+    bool can_write(ComponentType<Component> type, BehaviorId behavior, ComponentSlotId slot) const;
 };
 
 template <typename Component>
@@ -183,6 +189,11 @@ bool ComponentRegistry::has_component_named(ComponentType<Component> type, const
     } catch (...) {
         return false;
     }
+}
+
+template <typename Component>
+ComponentSlotId ComponentRegistry::component_slot(ComponentType<Component> type, const std::string& name) const {
+    return named_slot(component_type(type), name);
 }
 
 template <typename Component>
@@ -305,6 +316,32 @@ bool ComponentRegistry::can_read(ComponentType<Component> type, BehaviorId behav
 
         for (const liquid::ComponentSlotAccess& access : accesses->second) {
             if (access.slot == slot && (access.mode == liquid::ComponentSlotAccess::r || access.mode == liquid::ComponentSlotAccess::rw))
+                return true;
+        }
+    } catch (...) {
+        return false;
+    }
+
+    return false;
+}
+
+template <typename Component>
+bool ComponentRegistry::can_write(ComponentType<Component> type, BehaviorId behavior, ComponentSlotId slot) const {
+    try {
+        ComponentTypeId typeId = component_type(type);
+        auto storage = component_storage<Component>(typeId);
+
+        if (!storage->has(slot))
+            return false;
+
+        const auto& allAccesses = storage->allAccesses();
+        auto accesses = allAccesses.find(behavior);
+
+        if (accesses == allAccesses.end())
+            return false;
+
+        for (const liquid::ComponentSlotAccess& access : accesses->second) {
+            if (access.slot == slot && (access.mode == liquid::ComponentSlotAccess::w || access.mode == liquid::ComponentSlotAccess::rw))
                 return true;
         }
     } catch (...) {

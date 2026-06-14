@@ -31,7 +31,7 @@ Liquid Layer is the human-facing research application. Liquid is the reusable en
 M1 proves the first technical foundation:
 
 - behaviors exist as the domain identity instead of generic entities;
-- intents are owned by behaviors and use recyclable owner-local IDs;
+- intents are owned by behaviors and use global recyclable intent-record handles;
 - components are shared named data, not behavior-owned objects;
 - behaviors receive read/write access to named component instances;
 - `Coordinator` is the public boundary for behavior ownership, permissions, signatures, and cleanup;
@@ -39,6 +39,8 @@ M1 proves the first technical foundation:
 - cleanup and recycling paths are covered by assert tests, deterministic stress tests, and opt-in sanitizer builds.
 
 This is enough to say the project now has a small Solid core, not just an architecture sketch.
+
+M2 extends that foundation with immutable typed intent records, persistent/until-time lifetime metadata, stateless expiration checks, and Coordinator-owned cleanup when intent targets or write access become invalid.
 
 ---
 
@@ -61,4 +63,3 @@ This is enough to say the project now has a small Solid core, not just an archit
 - Should the article present Liquid as a research architecture first, or as an engine-building narrative first?
 - What evidence will be needed before making claims about reducing cognitive friction?
 - Which diagrams are needed: layer diagram, intent lifecycle, behavior/component access, or frame flow?
-

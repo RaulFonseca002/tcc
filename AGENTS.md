@@ -26,35 +26,36 @@ Superposition ECS reference lives at `/home/raul/Desktop/superposition`. Use it 
 
 ## Current Coding Milestone
 
-### M2 — Intent Lifetime and Expiration
+### M3 — Intent Resolution
 
-Goal: add the first lifetime model for immutable intent records while keeping `Coordinator` as the public behavior-ownership boundary.
+Goal: resolve live immutable intents into selected effect data while keeping expiration, frame execution, and adapter commands out of scope.
 
 Codex should focus only on:
 
-- `IntentLifetime.hpp`
-- `IntentExpiration.hpp`
+- `IntentResolver.hpp`
 - `IntentRegistry.hpp`
 - `Coordinator.hpp`
 - `Ids.hpp`
+- `IntentLifetime.hpp`
+- `IntentExpiration.hpp`
 - `BehaviorRegistry.hpp`
 - `ComponentStorage.hpp`
 - `ComponentRegistry.hpp`
 - `SystemRegistry.hpp`
-- `IntentExpiration.cpp`
-- existing M1 `.cpp` files only when needed for lifetime integration
+- `IntentResolver.cpp`
+- existing M1/M2 `.cpp` files only when needed for resolver integration
 - CMake boilerplate
-- test files for the above, especially `test_intent_expiration.cpp` and regressions in existing M1 tests
+- test files for the above, especially `test_intent_resolution.cpp` and regressions in existing M1/M2 tests
 
-Do not create runtime, event, adapter, Lua, LLM, resolver, or simulation systems yet.
-M2 is limited to intent lifetime metadata, expiration status/reason, and cleanup of expired intents. Do not add intent resolution, frame execution, or adapter commands.
+Do not create runtime, event, adapter, Lua, LLM, or simulation systems yet.
+M3 is limited to deterministic intent resolution into selected effect data. Do not add frame execution, adapter commands, Lua, LLM integration, or a runtime loop.
 
 ---
 
-## Current Minimal Repository Shape and M2 Additions
+## Current Minimal Repository Shape and M3 Additions
 
 Start small. Do not create folders before they are needed.
-The M2 lifetime files listed here are allowed additions when implementing the current milestone.
+The M3 resolver files listed here are allowed additions when implementing the current milestone.
 
 ```text
 liquid/
@@ -69,6 +70,7 @@ liquid/
       Ids.hpp
       IntentLifetime.hpp
       IntentExpiration.hpp
+      IntentResolver.hpp
       ComponentStorage.hpp
       ComponentRegistry.hpp
       Coordinator.hpp
@@ -83,6 +85,7 @@ liquid/
     IntentRegistry.cpp
     SystemRegistry.cpp
     IntentExpiration.cpp
+    IntentResolver.cpp
 
   tests/
     test_ids.cpp
@@ -93,6 +96,7 @@ liquid/
     test_intent_registry.cpp
     test_system_registry.cpp
     test_intent_expiration.cpp
+    test_intent_resolution.cpp
     test_stress.cpp
 ```
 
@@ -136,10 +140,12 @@ Do not silently implement large behavior or runtime logic.
 - Cleanup may delete an intent.
 - No system should mutate the semantic contents of an existing intent after creation.
 - `IntentRegistry` owns immutable typed intent records as the source of truth and keeps secondary indexes for owner and target lookup.
-- `IntentRegistry` stores data and indexes only; expiration, cancellation, resolver, and application policy live outside it.
+- `IntentRegistry` stores data and indexes only; expiration, resolver, and application policy live outside it.
 - Intent targets use `ComponentTypeId + ComponentSlotId` for component-state requests and are indexed as type -> slot -> intent IDs.
 - `IntentRegistry` does not validate whether an owner `BehaviorId` exists.
 - Valid behavior ownership should be enforced before calling intent APIs, normally through `Coordinator` or behavior creation flow.
+- Coordinator-created component intents require current write access to their target slot.
+- Coordinator cleanup destroys intents whose target slot is removed or whose owner loses write access to that target.
 - `Coordinator::create_behavior()` must create the matching intent pool, and behavior destruction must remove that pool, so behavior state and intent-manager behavior pools stay aligned.
 - Manager command functions such as `IntentRegistry::destroy(IntentId)` may assume valid live handles from the project flow; query functions such as `exists(...)` can still return false safely.
 - Prefer making invalid states unreachable at the call boundary over repeating defensive checks in every lower-level manager.
@@ -185,8 +191,8 @@ Current planned ID model:
 
 - Behavior lifetime may be modeled with behavior components when needed.
 - Intent lifetime is intent metadata, not component storage.
-- M2 should introduce only the minimal lifetime model needed to evaluate and clean expired immutable intents.
-- Lifetime policies planned for M2 are until-time and until-cancelled. Until-frame or script-based lifetime can remain future work unless explicitly required.
+- M2 introduced the minimal lifetime model needed to evaluate and clean expired immutable intents.
+- Current lifetime policies are persistent and until-time. Until-frame, cancellation events, or script-based lifetime can remain future work unless explicitly required.
 - Factories/bundles should be used later so required intent fields and behavior component sets are not forgotten.
 
 ### Serialization/Reproducibility
@@ -204,27 +210,25 @@ Avoid:
 
 ## Current Success Criteria
 
-M2 is working when tests can prove:
+M3 is working when tests can prove:
 
-1. Intent lifetime metadata can represent persistent, until-time, and until-cancelled intents.
-2. Immutable typed intent records keep lifetime metadata and replacement values separate from component storage.
-3. Expiration can classify until-time intents deterministically from an explicit time/frame input.
-4. Until-cancelled intents do not expire from time and can be removed by the owning cleanup flow.
-5. Expiration results can be computed without mutating semantic intent contents or registry indexes.
-6. Expired intents can be deleted through registry/coordinator flow without bypassing behavior ownership.
-7. Existing M1 behavior, component, system-membership, recycling, and sanitizer-backed stress tests still pass.
+1. Live component intents can be grouped by `ComponentTypeId + ComponentSlotId`.
+2. Resolver policy can deterministically select one intent for a target.
+3. Compatible merge behavior is explicit, even if the first implementation only supports replacement selection.
+4. Selected output is effect data, not direct component mutation or adapter commands.
+5. Expired or invalidated intents are not reintroduced by resolution.
+6. Existing M1/M2 behavior, component, system-membership, intent lifetime, cleanup, recycling, and sanitizer-backed stress tests still pass.
 
 ---
 
 ## What Not to Build Yet
 
-Do not add these during M2:
+Do not add these during M3:
 
 - `runtime/`
 - `events/`
 - `systems/`
 - `adapters/`
-- intent resolver
 - frame loop
 - Lua integration
 - LLM integration
@@ -236,8 +240,8 @@ Do not add these during M2:
 ## Future Notes
 
 - M1 is complete: ECS-style behavior identity, typed component storage/registry, coordinator-owned signatures, intent owner pools, system membership, expanded assert tests, stress tests, and opt-in sanitizer builds are in place.
-- M2 intent lifetime and expiration work should continue to use `Coordinator` as the public world interface instead of bypassing behavior ownership checks.
-- Future intent resolution systems should consume the existing component query surface: behavior/type access produces `name -> ComponentSlotId`, and component data is resolved through coordinator/registry APIs.
+- M2 intent lifetime and expiration is complete and uses `Coordinator` as the public world interface instead of bypassing behavior ownership checks.
+- M3 intent resolution should consume the existing component query surface: behavior/type access produces `name -> ComponentSlotId`, and component data is resolved through coordinator/registry APIs.
 - System coordination is implemented as template-addressed system registration, signatures, behavior membership, and membership callbacks. Execution/frame ordering belongs to the future deterministic runtime/frame-loop milestone.
 - When systems are introduced, `Coordinator` should remain responsible for registering systems, storing or forwarding system `Signature`s, matching behavior signatures to systems, and updating system membership whenever component access changes or a behavior/component is destroyed.
 - System execution/frame ordering is missing by design; it belongs with the future deterministic runtime/frame-loop milestone after the M1 system registry/interface exists.

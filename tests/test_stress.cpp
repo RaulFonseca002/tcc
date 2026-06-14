@@ -84,7 +84,7 @@ void stress_intent_registry()
     std::map<BehaviorId, std::vector<IntentId>> activeList;
 
     for (BehaviorId owner : owners) {
-        registry.addBehaviour(owner);
+        registry.create_behavior_pool(owner);
         active[owner];
         activeList[owner];
     }
@@ -113,7 +113,7 @@ void stress_intent_registry()
             registry.destroy_owned_by(owner);
             active[owner].clear();
             activeList[owner].clear();
-            registry.addBehaviour(owner);
+            registry.create_behavior_pool(owner);
         }
 
         for (BehaviorId checkedOwner : owners) {

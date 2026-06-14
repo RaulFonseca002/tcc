@@ -4,7 +4,7 @@
 
 BehaviorId Coordinator::create_behavior() {
     BehaviorId behavior = behaviors.create();
-    intents.addBehaviour(behavior);
+    intents.create_behavior_pool(behavior);
 
     return behavior;
 }
@@ -52,12 +52,32 @@ const Intent& Coordinator::intent(IntentId id) const {
     return intents.intent(id);
 }
 
+std::vector<IntentId> Coordinator::live_intent_ids() const {
+    return intents.live_intent_ids();
+}
+
 std::vector<IntentId> Coordinator::intents_for(ComponentTypeId type, ComponentSlotId slot) const {
     return intents.intents_for(type, slot);
 }
 
 const IntentTargetIndex& Coordinator::intent_target_index() const {
     return intents.target_index();
+}
+
+void Coordinator::destroy_intents_for_target(ComponentTypeId type, ComponentSlotId slot) {
+    std::vector<IntentId> targeted = intents.intents_for(type, slot);
+
+    for (IntentId id : targeted)
+        intents.destroy(id);
+}
+
+void Coordinator::destroy_intents_for_owner_target(BehaviorId owner, ComponentTypeId type, ComponentSlotId slot) {
+    std::vector<IntentId> targeted = intents.intents_for(type, slot);
+
+    for (IntentId id : targeted) {
+        if (intents.owner_of(id) == owner)
+            intents.destroy(id);
+    }
 }
 
 std::size_t Coordinator::intent_count(BehaviorId owner) {

@@ -108,6 +108,7 @@ int main()
         });
 
         BehaviorId recycled = coordinator.create_behavior();
+        coordinator.grant_component_access(lightType, recycled, "officeLight", ComponentAccessMode::ReadWrite);
         IntentId recreatedIntent = coordinator.create_intent(recycled, lightType, slot, IntentLifetime::persistent(), Light{90});
 
         assert(recycled == behavior);
@@ -276,6 +277,82 @@ int main()
         assert(coordinator.get_components(temperatureType, recycled).empty());
         assert(!coordinator.behavior_signature(recycled).test(temperatureType.id));
         assert(!coordinator.system_has_behavior<TemperatureSystem>(recycled));
+    }
+
+    {
+        Coordinator coordinator;
+
+        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        coordinator.add_component(lightType, "officeLight", Light{40});
+
+        BehaviorId reader = coordinator.create_behavior();
+        BehaviorId writer = coordinator.create_behavior();
+
+        coordinator.grant_component_access(lightType, reader, "officeLight", ComponentAccessMode::Read);
+        coordinator.grant_component_access(lightType, writer, "officeLight", ComponentAccessMode::Write);
+
+        ComponentSlotId slot = coordinator.get_components(lightType, writer).at("officeLight");
+
+        expect_throw([&] {
+            coordinator.create_intent(reader, lightType, slot, IntentLifetime::persistent(), Light{10});
+        });
+
+        IntentId writerIntent = coordinator.create_intent(writer, lightType, slot, IntentLifetime::persistent(), Light{80});
+        assert(coordinator.intent_exists(writerIntent));
+
+        coordinator.grant_component_access(lightType, writer, "officeLight", ComponentAccessMode::Read);
+
+        assert(!coordinator.intent_exists(writerIntent));
+
+        expect_throw([&] {
+            coordinator.create_intent(writer, lightType, slot, IntentLifetime::persistent(), Light{90});
+        });
+    }
+
+    {
+        Coordinator coordinator;
+
+        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        coordinator.add_component(lightType, "officeLight", Light{40});
+
+        BehaviorId behavior = coordinator.create_behavior();
+        coordinator.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
+
+        ComponentSlotId slot = coordinator.get_components(lightType, behavior).at("officeLight");
+        IntentId intent = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{80});
+
+        coordinator.remove_component(lightType, "officeLight");
+
+        assert(!coordinator.intent_exists(intent));
+        assert(coordinator.intents_for(lightType.id, slot).empty());
+
+        coordinator.add_component(lightType, "taskLight", Light{55});
+        coordinator.grant_component_access(lightType, behavior, "taskLight", ComponentAccessMode::ReadWrite);
+
+        ComponentSlotId reusedSlot = coordinator.get_components(lightType, behavior).at("taskLight");
+        assert(reusedSlot == slot);
+        assert(coordinator.intents_for(lightType.id, reusedSlot).empty());
+    }
+
+    {
+        Coordinator coordinator;
+
+        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        coordinator.add_component(lightType, "officeLight", Light{40});
+
+        BehaviorId behavior = coordinator.create_behavior();
+        coordinator.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
+
+        ComponentSlotId slot = coordinator.get_components(lightType, behavior).at("officeLight");
+        IntentId intent = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{80});
+
+        coordinator.revoke_component_access(lightType, behavior, "officeLight");
+
+        assert(!coordinator.intent_exists(intent));
+
+        expect_throw([&] {
+            coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{90});
+        });
     }
 
     {

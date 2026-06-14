@@ -26,6 +26,8 @@ private:
     std::map<BehaviorId, Signature> behaviorSignatures;
 
     void update_system_memberships(BehaviorId behavior);
+    void destroy_intents_for_target(ComponentTypeId type, ComponentSlotId slot);
+    void destroy_intents_for_owner_target(BehaviorId owner, ComponentTypeId type, ComponentSlotId slot);
 
 public:
     BehaviorId create_behavior();
@@ -39,6 +41,7 @@ public:
     ComponentTarget intent_target(IntentId id);
     IntentLifetime intent_lifetime(IntentId id);
     const Intent& intent(IntentId id) const;
+    std::vector<IntentId> live_intent_ids() const;
     std::vector<IntentId> intents_for(ComponentTypeId type, ComponentSlotId slot) const;
     const IntentTargetIndex& intent_target_index() const;
     std::size_t intent_count(BehaviorId owner);
@@ -227,6 +230,9 @@ IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> t
     if (!components.resolve_component(type, slot))
         throw std::runtime_error("component slot not found");
 
+    if (!components.can_write(type, owner, slot))
+        throw std::runtime_error("component write access denied");
+
     return intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value));
 }
 
@@ -258,11 +264,14 @@ const Component* Coordinator::get_component_named(ComponentType<Component> type,
 template <typename Component>
 void Coordinator::remove_component(ComponentType<Component> type, const std::string& name) {
     ComponentTypeId typeId = components.component_type(type);
+    ComponentSlotId slot = components.component_slot(type, name);
     std::vector<BehaviorId> affectedBehaviors = components.behaviors_with_access(type);
 
+    destroy_intents_for_target(typeId, slot);
+
     // ComponentRegistry clears storage access and name/slot indexes. Coordinator
-    // then clears behavior signatures for behaviors that no longer have any
-    // component of this type.
+    // first removes intents targeting the slot, then clears behavior signatures
+    // for behaviors that no longer have any component of this type.
     components.remove_component(type, name);
 
     for (BehaviorId behavior : affectedBehaviors) {
@@ -278,10 +287,17 @@ void Coordinator::grant_component_access(ComponentType<Component> type, Behavior
     if (!behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
+    ComponentTypeId typeId = components.component_type(type);
+    ComponentSlotId slot = components.component_slot(type, name);
+
     // Behavior existence is checked here, not in ComponentRegistry, so invalid
     // ownership is rejected at the world boundary.
     components.grant_access(type, behavior, name, mode);
-    behaviorSignatures[behavior].set(components.component_type(type));
+
+    if (mode == ComponentAccessMode::Read)
+        destroy_intents_for_owner_target(behavior, typeId, slot);
+
+    behaviorSignatures[behavior].set(typeId);
     update_system_memberships(behavior);
 }
 
@@ -291,6 +307,9 @@ void Coordinator::revoke_component_access(ComponentType<Component> type, Behavio
         throw std::runtime_error("behavior id not found");
 
     ComponentTypeId typeId = components.component_type(type);
+    ComponentSlotId slot = components.component_slot(type, name);
+
+    destroy_intents_for_owner_target(behavior, typeId, slot);
 
     components.revoke_access(type, behavior, name);
 

@@ -141,7 +141,7 @@ std::size_t IntentRegistry::size() const {
     return intentTypes.size();
 }
 
-void IntentRegistry::addBehaviour(BehaviorId id) {
+void IntentRegistry::create_behavior_pool(BehaviorId id) {
     destroy_owned_by(id);
     byOwner[id];
 }

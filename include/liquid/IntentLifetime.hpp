@@ -8,24 +8,27 @@ using IntentTime = std::uint64_t;
 
 enum class IntentLifetimeKind {
     Persistent,
-    UntilTime,
-    UntilCancelled
+    UntilTime
 };
 
 struct IntentLifetime {
-    IntentLifetimeKind kind = IntentLifetimeKind::Persistent;
-    IntentTime expiresAt = 0;
+    IntentLifetime() = delete;
+
+    IntentLifetimeKind kind;
+    IntentTime expiresAt;
+
+    IntentLifetime(IntentLifetimeKind kind, IntentTime expiresAt)
+        : kind(kind),
+          expiresAt(expiresAt)
+    {
+    }
 
     static IntentLifetime persistent() {
-        return {};
+        return {IntentLifetimeKind::Persistent, 0};
     }
 
     static IntentLifetime until_time(IntentTime time) {
         return {IntentLifetimeKind::UntilTime, time};
-    }
-
-    static IntentLifetime until_cancelled() {
-        return {IntentLifetimeKind::UntilCancelled, 0};
     }
 };
 

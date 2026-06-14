@@ -124,7 +124,7 @@ public:
 
     std::size_t size(BehaviorId id) const;
     std::size_t size() const;
-    void addBehaviour(BehaviorId id);
+    void create_behavior_pool(BehaviorId id);
 };
 
 template <typename Component>
@@ -176,12 +176,7 @@ IntentId IntentRegistry::create(BehaviorId owner, ComponentType<Component> type,
 
     IntentId id = next_intent_id();
 
-    ComponentIntent<Component> record;
-    record.id = id;
-    record.owner = owner;
-    record.target = {type.id, slot};
-    record.lifetime = lifetime;
-    record.value = std::move(value);
+    ComponentIntent<Component> record{{id, owner, {type.id, slot}, lifetime}, std::move(value)};
 
     storage_for(type)->add(std::move(record));
     intentTypes.emplace(id, type.id);

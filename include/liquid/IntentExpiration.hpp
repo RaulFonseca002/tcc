@@ -1,31 +1,22 @@
 #pragma once
 
-#include "liquid/IntentRegistry.hpp"
+#include "liquid/Ids.hpp"
 #include "liquid/IntentLifetime.hpp"
+
+#include <cstddef>
+#include <vector>
+
+class Coordinator;
+class IntentRegistry;
 
 namespace liquid {
 
-enum class IntentStatus {
-    Alive,
-    Expired
-};
-
-enum class IntentExpirationReason {
-    None,
-    TimeReached
-};
-
-struct IntentExpiration {
-    IntentStatus status = IntentStatus::Alive;
-    IntentExpirationReason reason = IntentExpirationReason::None;
-};
-
-IntentExpiration expiration_for(const IntentLifetime& lifetime, IntentTime now);
-IntentExpiration expiration_for(const Intent& intent, IntentTime now);
+std::vector<IntentId> expired_intent_ids(const IntentRegistry& intents, IntentTime now);
+std::size_t destroy_expired_intents(IntentRegistry& intents, IntentTime now);
+std::vector<IntentId> expired_intent_ids(const Coordinator& coordinator, IntentTime now);
+std::size_t destroy_expired_intents(Coordinator& coordinator, IntentTime now);
 
 }
 
-using liquid::IntentExpiration;
-using liquid::IntentExpirationReason;
-using liquid::IntentStatus;
-using liquid::expiration_for;
+using liquid::destroy_expired_intents;
+using liquid::expired_intent_ids;

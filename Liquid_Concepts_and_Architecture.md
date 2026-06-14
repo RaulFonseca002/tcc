@@ -1,10 +1,10 @@
 # Liquid Concepts and Architecture v0.2
 
-**Status:** Living baseline after M1  
+**Status:** Living baseline after M2
 **Scope:** Conceptual architecture, vocabulary, and accepted design direction  
 **Project:** Liquid Layer  
 **Engine / framework:** Liquid  
-**Current development stage:** Solid, M2 intent lifetime and expiration  
+**Current development stage:** Solid, M3 intent resolution
 **Date:** June 2026
 
 ---
@@ -25,7 +25,7 @@ The project is divided into three conceptual layers.
 |---|---|---|
 | **Liquid Layer** | Final application/research project focused on adaptive smart environments for neurodivergent people. | Future project layer |
 | **Liquid** | Standalone engine/framework/runtime used by Liquid Layer and by simulation/data-collection tools. | Engine repo |
-| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1 complete; M2 current |
+| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1-M2 complete; M3 current |
 | **Liquid stage** | Later implementation stage: adaptive/LLM layer that creates, modifies, and explains Solid blocks. | Future focus |
 
 The internal code should not overuse metaphorical names. Folder and file names should describe responsibility: `vocabulary`, `core`, `runtime`, `events`, `behaviors`, `intents`, `systems`, and `adapters`.
@@ -175,7 +175,7 @@ Examples:
 
 Intent lifetime is modeled as intent data, not as component storage and not as a single enum with all logic inside the resolver.
 
-A lifetime-managed intent can carry a specific lifetime policy, such as until-time, until-frame, until-cancelled, or future script-based lifetime data. Expiration logic evaluates that data without owning the intent registry.
+M2 implements persistent and until-time lifetimes. Until-frame, future cancellation events, and script-based lifetime data remain future policies. Expiration logic evaluates lifetime data without owning the intent registry.
 
 Normal code should use factories/bundles to create valid intent records and avoid missing required fields.
 
@@ -202,7 +202,7 @@ Behavior / Agent components
     -> processed by systems, events, or schedules
     -> creates an Intent owned by a behavior or agent
     -> Intent exists as immutable runtime data
-    -> Expiration logic marks expired intents
+    -> Expiration logic identifies and removes expired intents
     -> IntentResolver resolves active intents by target
     -> Accepted intents change component state or produce effects
     -> ResolvedEffect is produced
@@ -232,9 +232,9 @@ Accepted baseline:
 - behavior queries start from a component type, so storage itself does not need to know its component type;
 - behavior state, capabilities, access, and system eligibility are represented through ordinary shared named component instances plus access records;
 - access relationships connect a behavior to a named component with read/write permissions;
-- behavior-facing queries expose `name -> ComponentAccess`, where the name is the user/device-facing key and `ComponentAccess` stores an index into an access-record vector;
+- behavior-facing queries expose `name -> ComponentSlotId`, where the name is the user/device-facing key and the slot is the typed storage handle;
 - `Coordinator` owns cross-manager behavior permission checks and behavior signatures;
-- trusted component resolution looks up the access record by ID after coordinator validation;
+- trusted component resolution uses the registered component type handle plus the slot after coordinator validation;
 - intents are immutable proposal records, not component rows;
 - intent target keys should identify the component instance or external effect being changed;
 - intent queues can use per-target priority heaps so the resolver can inspect the strongest candidate and merge compatible proposals;
@@ -353,10 +353,11 @@ Folder responsibility:
 - Systems should own behavior logic.
 - Intents are immutable proposed component-state changes or effects, not component rows and not immediate actions.
 - Intent owner pools are aligned with behavior creation/destruction through `Coordinator`.
+- Coordinator-created component intents require write access and are cleaned up when their target slot or owner write access becomes invalid.
 - The completed M1 test suite uses assert binaries, deterministic stress coverage, and an opt-in AddressSanitizer/UBSan CMake mode.
 - Intent resolution should be target-oriented; per-target priority queues/heaps are the preferred starting point unless implementation evidence suggests otherwise.
 - A decided intent becomes a resolved effect, then an adapter command/action.
-- Intent lifetime is modeled through intent data plus factories/bundles.
+- Completed M2 intent lifetime is persistent or until-time; future factories/bundles should create valid intent records without missing required metadata.
 - No C++ inheritance between components in v1.
 - LLM conflict resolution is not a default mechanism.
 - LLM/script work should be async when it may be slow.

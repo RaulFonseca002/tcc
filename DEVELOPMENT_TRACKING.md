@@ -152,7 +152,8 @@ Current implementation notes:
 - `ComponentType<T>` is the public typed handle returned from `register_component<T>(...)`.
 - `TypeName -> ComponentTypeId` is resolved at registration; `ComponentTypeId` is then the internal key for storages, name maps, and behavior signatures.
 - `Coordinator` is the outside-facing interface for creating, managing, reading/writing, and deleting behaviors, intents, and components.
-- Component removal clears access to the removed slot before recycling it, erases name/slot indexes, and lets `Coordinator` reset affected behavior signatures.
+- Component removal clears intents targeting the removed slot, clears access before recycling it, erases name/slot indexes, and lets `Coordinator` reset affected behavior signatures.
+- Coordinator-created component intents require write access and are removed when the owner loses write access to the target.
 - Behavior destruction clears component access maps, erases behavior signatures, destroys owned intents, and recycles the behavior ID.
 - System execution is not part of M1. Systems are template-addressed by concrete type and currently have `Signature` requirements, matching behavior membership, and membership-event callbacks.
 - `LIQUID_ENABLE_SANITIZERS` is available as an opt-in CMake option for AddressSanitizer and UBSan on Clang/GCC.
@@ -160,7 +161,7 @@ Current implementation notes:
 
 Future tracking:
 
-- M2 intent lifetime and expiration should keep valid behavior ownership enforced through `Coordinator`.
+- Completed M2 intent lifetime and expiration keeps valid behavior ownership and intent cleanup enforced through `Coordinator`.
 - Future resolution systems should consume `name -> ComponentSlotId` maps and resolve component data through coordinator/registry APIs.
 - M1 system coordination now covers inherited system objects, `Signature` requirements, behavior-to-system matching, and system membership updates.
 - When systems exist, `Coordinator` should remain the cross-manager boundary that updates system membership after behavior signatures change through access grants, access revokes, component removal, or behavior destruction.
@@ -241,7 +242,11 @@ Out of scope:
 
 ### M2 — Intent Lifetime and Expiration
 
-**Status:** Current
+**Status:** Done
+
+Completion note:
+
+M2 adds explicit persistent/until-time intent lifetime metadata, typed immutable intent records, owner and target indexes, stateless expiration helpers, Coordinator-facing expiration cleanup, and Coordinator cleanup for invalidated intent targets/write access.
 
 Goal:
 
@@ -251,8 +256,7 @@ Expected concepts:
 
 - intent lifetime metadata;
 - until-time expiration;
-- until-cancelled expiration;
-- expiration status/reason;
+- persistent intents that do not expire from time;
 - cleanup of expired intents.
 
 Current implementation direction:
@@ -260,9 +264,12 @@ Current implementation direction:
 - Keep intent lifetime as intent metadata, not component storage.
 - Keep `Coordinator` as the public boundary for behavior-owned intent creation and cleanup.
 - Keep `IntentRegistry` as the source of truth for typed intent records, with secondary indexes for owner cleanup and `ComponentTypeId -> ComponentSlotId` target lookup.
-- Keep expiration/cancellation policy outside `IntentRegistry`; the registry stores data and deletes records when asked.
+- Keep expiration policy outside `IntentRegistry`; the registry stores data and deletes records when asked.
+- Require current write access when `Coordinator` creates component-target intents.
+- Destroy coordinator-owned intents when their target component slot is removed or when their owner loses write access to that target.
 - Add deterministic expiration logic that receives explicit time/frame input rather than depending on wall-clock globals.
 - Classify expired intents without mutating their semantic request contents or registry indexes.
+- Destroy expired intents in two phases: collect IDs first, then delete, so cleanup never removes while iterating.
 - Cleanup may remove expired intents through the existing registry/coordinator flow.
 
 Likely new files:
@@ -278,18 +285,19 @@ Keep structure flat unless there are enough files to justify splitting folders.
 
 Success criteria:
 
-- [x] Represent persistent, until-time, and until-cancelled intent lifetime metadata.
-- [x] Classify whether an intent lifetime is alive or expired from explicit input.
+- [x] Represent persistent and until-time intent lifetime metadata.
+- [x] Classify whether an intent lifetime is expired from explicit input.
 - [x] Evaluate until-time intents deterministically from explicit input.
-- [x] Leave until-cancelled intents alive until deletion by higher-level cleanup.
+- [x] Leave persistent intents alive until deletion by higher-level cleanup.
 - [x] Clean expired intents without breaking owner-pool recycling.
+- [x] Keep coordinator-created component intents valid against target slot lifetime and owner write access.
 - [x] Preserve all completed M1 behavior/component/system tests.
 
 ---
 
 ### M3 — Intent Resolution
 
-**Status:** Planned
+**Status:** Current
 
 Goal:
 
@@ -306,10 +314,17 @@ Expected concepts:
 - resolver policies;
 - selected effect output.
 
+Current implementation direction:
+
+- Resolve only live intent records exposed through `Coordinator`/`IntentRegistry`; expiration remains separate.
+- Group competing component intents by `ComponentTypeId + ComponentSlotId`.
+- Produce selected effects as data; do not mutate components, run a frame loop, or emit adapter commands in M3.
+- Keep resolver policy explicit and deterministic enough for later replay.
+- Reuse the existing common `Intent` and typed intent records unless implementation pressure justifies a split.
+
 Likely new files:
 
 ```text
-include/liquid/Intent.hpp
 include/liquid/IntentResolver.hpp
 src/IntentResolver.cpp
 tests/test_intent_resolution.cpp
@@ -408,9 +423,10 @@ When a milestone is completed:
 
 ## Current Notes
 
-- The current coding focus is M2 intent lifetime and expiration.
+- The current coding focus is M3 intent resolution.
 - M1 modified ECS core is complete and should be treated as foundation, not active scope.
 - M2 now uses typed intent-record storage with owner and component-target indexes; `IntentId` no longer encodes the owner behavior.
+- M3 should resolve live intents into selected effect data without adding a frame loop, systems folder, runtime, or adapters.
 - The project owner will implement core logic manually.
 - Codex should generate headers, tests, CMake, and boilerplate unless explicitly asked to implement logic.
 - The current structure is intentionally small to keep the project controllable.
@@ -418,6 +434,7 @@ When a milestone is completed:
 - For component-manager work, keep the distinction clear: component type is the system query signature; component names are the user/device-facing way to find shared component instances.
 - Prefer registered component IDs for type lookup, while using string names for user-created component instances.
 - Access relationships carry read/write permissions and are exposed as `name -> ComponentSlotId` maps for each behavior and component type.
+- Coordinator-created component intents require current write access, and Coordinator removes them when target slots or owner write access become invalid.
 - Use named constants for packed key shifts/masks instead of repeating raw numeric literals when a packed key is still useful.
 - Intents are not component rows. They are immutable proposals to change component state or emit effects.
 - Intent lifetime is metadata on immutable intent records, not component storage.

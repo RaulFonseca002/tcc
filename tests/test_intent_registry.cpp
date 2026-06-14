@@ -34,14 +34,14 @@ int main()
         BehaviorId owner = 7;
         ComponentType<Light> lightType{2};
         ComponentSlotId slot = 4;
-        intents.addBehaviour(owner);
+        intents.create_behavior_pool(owner);
 
-        IntentId id = intents.create(owner, lightType, slot, IntentLifetime::until_cancelled(), Light{60});
+        IntentId id = intents.create(owner, lightType, slot, IntentLifetime::persistent(), Light{60});
 
         assert(intents.exists(id));
         assert(intents.owner_of(id) == owner);
         assert(intents.target_of(id) == (ComponentTarget{lightType.id, slot}));
-        assert(intents.lifetime_of(id).kind == IntentLifetimeKind::UntilCancelled);
+        assert(intents.lifetime_of(id).kind == IntentLifetimeKind::Persistent);
         assert(intents.intent(id).id == id);
         assert(intents.intent(id).owner == owner);
         assert(intents.typed_intent(lightType, id).value.brightness == 60);
@@ -57,7 +57,7 @@ int main()
         BehaviorId owner = 1;
         ComponentType<Light> lightType{0};
         ComponentSlotId slot = 2;
-        intents.addBehaviour(owner);
+        intents.create_behavior_pool(owner);
 
         IntentId id = intents.create(owner, lightType, slot, IntentLifetime::persistent(), Light{10});
         intents.destroy(id);
@@ -78,12 +78,12 @@ int main()
         BehaviorId owner = 3;
         ComponentType<Temperature> temperatureType{1};
         ComponentSlotId slot = 6;
-        intents.addBehaviour(owner);
+        intents.create_behavior_pool(owner);
 
         IntentId beforeReset = intents.create(owner, temperatureType, slot, IntentLifetime::until_time(30), Temperature{22});
         assert(intents.exists(beforeReset));
 
-        intents.addBehaviour(owner);
+        intents.create_behavior_pool(owner);
 
         assert(!intents.exists(beforeReset));
         assert(intents.size(owner) == 0);
@@ -101,8 +101,8 @@ int main()
         BehaviorId ownerTwo = 2;
         ComponentType<Light> lightType{0};
         ComponentSlotId slot = 9;
-        intents.addBehaviour(ownerOne);
-        intents.addBehaviour(ownerTwo);
+        intents.create_behavior_pool(ownerOne);
+        intents.create_behavior_pool(ownerTwo);
 
         IntentId ownedByOne = intents.create(ownerOne, lightType, slot, IntentLifetime::persistent(), Light{1});
         IntentId alsoOwnedByOne = intents.create(ownerOne, lightType, slot, IntentLifetime::persistent(), Light{2});
@@ -121,7 +121,7 @@ int main()
             intents.create(ownerOne, lightType, slot, IntentLifetime::persistent(), Light{4});
         });
 
-        intents.addBehaviour(ownerOne);
+        intents.create_behavior_pool(ownerOne);
         IntentId recreated = intents.create(ownerOne, lightType, slot, IntentLifetime::persistent(), Light{5});
 
         assert(intents.owner_of(recreated) == ownerOne);
@@ -144,7 +144,7 @@ int main()
         BehaviorId owner = 11;
         ComponentType<Light> lightType{0};
         ComponentSlotId slot = 1;
-        intents.addBehaviour(owner);
+        intents.create_behavior_pool(owner);
         std::set<IntentId> created;
 
         for (std::size_t i = 0; i < MAX_INTENTS; ++i) {
