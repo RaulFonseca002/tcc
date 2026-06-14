@@ -79,6 +79,7 @@ void stress_intent_registry()
     std::mt19937 rng(0xFACEu);
     IntentRegistry registry;
     std::array<BehaviorId, 4> owners{1, 2, 3, 4};
+    ComponentType<StressLight> type{0};
     std::map<BehaviorId, std::set<IntentId>> active;
     std::map<BehaviorId, std::vector<IntentId>> activeList;
 
@@ -93,8 +94,10 @@ void stress_intent_registry()
         int operation = static_cast<int>(rng() % 10);
 
         if (operation < 5 && active[owner].size() < MAX_INTENTS) {
-            IntentId id = registry.create(owner);
+            ComponentSlotId slot = static_cast<ComponentSlotId>(rng() % 16);
+            IntentId id = registry.create(owner, type, slot, IntentLifetime::persistent(), StressLight{static_cast<int>(step)});
             assert(registry.owner_of(id) == owner);
+            assert(registry.target_of(id) == (ComponentTarget{type.id, slot}));
             assert(active[owner].insert(id).second);
             activeList[owner].push_back(id);
         } else if (operation < 8 && !activeList[owner].empty()) {

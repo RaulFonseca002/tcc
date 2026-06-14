@@ -144,7 +144,7 @@ Build the smallest core that can create behaviors, create immutable intents owne
 Components are shared plain data instances queried by `ComponentType<T>` handles and component names. `ComponentStorage<T>` is the typed slot pool for one component type and owns access records for slots in that storage. `ComponentRegistry` owns component type IDs, the type-erased storage map, and globally unique names per component type.
 Behaviors do not own components exclusively; they receive read/write access to named components. Access is stored in the typed storage as `BehaviorId -> vector<ComponentSlotAccess>`, where each access records a slot and read/write mode. Systems see this through `Coordinator`/`ComponentRegistry` as `name -> ComponentSlotId` for a behavior and component type.
 Component types are registered with explicit stable names in M1 and return typed runtime handles. `Signature` is the shared component-type bitset used by both behavior composition and system requirements. `Coordinator` owns behavior signatures, behavior existence checks, cross-manager access checks, and cleanup sequencing.
-Packed composite keys are used for owner/local intent IDs; component access uses behavior/type/slot indexing instead of packed access IDs.
+Packed composite keys were used by the original M1 owner/local intent ID prototype; current intent IDs are global recyclable record handles while component access uses behavior/type/slot indexing.
 System coordination is part of the M1 ECS core. `SystemRegistry` registers `System` instances by concrete system type, stores each system's `Signature` and matching behavior membership, and emits membership callbacks when behaviors enter or leave a system. `Coordinator` compares behavior signatures to system signatures and updates membership when access or lifetimes change.
 
 Current implementation notes:
@@ -259,8 +259,10 @@ Current implementation direction:
 
 - Keep intent lifetime as intent metadata, not component storage.
 - Keep `Coordinator` as the public boundary for behavior-owned intent creation and cleanup.
+- Keep `IntentRegistry` as the source of truth for typed intent records, with secondary indexes for owner cleanup and `ComponentTypeId -> ComponentSlotId` target lookup.
+- Keep expiration/cancellation policy outside `IntentRegistry`; the registry stores data and deletes records when asked.
 - Add deterministic expiration logic that receives explicit time/frame input rather than depending on wall-clock globals.
-- Mark or classify expired intents without mutating their semantic request contents.
+- Classify expired intents without mutating their semantic request contents or registry indexes.
 - Cleanup may remove expired intents through the existing registry/coordinator flow.
 
 Likely new files:
@@ -276,12 +278,12 @@ Keep structure flat unless there are enough files to justify splitting folders.
 
 Success criteria:
 
-- [ ] Represent persistent, until-time, and until-cancelled intent lifetime metadata.
-- [ ] Query whether an intent is alive, expired, or cancelled.
-- [ ] Expire until-time intents deterministically from explicit input.
-- [ ] Leave until-cancelled intents alive until cancellation or cleanup.
-- [ ] Clean expired intents without breaking owner-pool recycling.
-- [ ] Preserve all completed M1 behavior/component/system tests.
+- [x] Represent persistent, until-time, and until-cancelled intent lifetime metadata.
+- [x] Classify whether an intent lifetime is alive or expired from explicit input.
+- [x] Evaluate until-time intents deterministically from explicit input.
+- [x] Leave until-cancelled intents alive until deletion by higher-level cleanup.
+- [x] Clean expired intents without breaking owner-pool recycling.
+- [x] Preserve all completed M1 behavior/component/system tests.
 
 ---
 
@@ -408,6 +410,7 @@ When a milestone is completed:
 
 - The current coding focus is M2 intent lifetime and expiration.
 - M1 modified ECS core is complete and should be treated as foundation, not active scope.
+- M2 now uses typed intent-record storage with owner and component-target indexes; `IntentId` no longer encodes the owner behavior.
 - The project owner will implement core logic manually.
 - Codex should generate headers, tests, CMake, and boilerplate unless explicitly asked to implement logic.
 - The current structure is intentionally small to keep the project controllable.

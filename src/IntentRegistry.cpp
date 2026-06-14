@@ -1,67 +1,147 @@
 #include "liquid/IntentRegistry.hpp"
 
-#include <numeric>
 #include <stdexcept>
 
-IntentId IntentRegistry::create(BehaviorId owner) {
-
-    if (availableIds[owner].empty())
+IntentId IntentRegistry::next_intent_id() {
+    if (intentTypes.size() >= MAX_INTENTS && availableIds.empty())
         throw std::runtime_error("all the intents are already in use");
 
+    if (!availableIds.empty()) {
+        IntentId id = availableIds.back();
+        availableIds.pop_back();
+        return id;
+    }
 
-    std::uint16_t intent = availableIds[owner].back();
-    availableIds[owner].pop_back();
-
-    active[owner].emplace(intent);
-
-    IntentId head = static_cast<IntentId>(owner) << INTENT_OWNER_SHIFT;
-    return head | intent;
+    return nextId++;
 }
 
-void IntentRegistry::addBehaviour(BehaviorId id) {
-    active[id].clear();
-    availableIds[id].resize(MAX_INTENTS);
-    std::iota(availableIds[id].begin(), availableIds[id].end(), 0);
+const I_IntentStorage& IntentRegistry::storage_for(IntentId id) const {
+    auto type = intentTypes.find(id);
+
+    if (type == intentTypes.end())
+        throw std::runtime_error("intent id not found");
+
+    auto storage = storages.find(type->second);
+
+    if (storage == storages.end())
+        throw std::runtime_error("intent storage type not found");
+
+    return *storage->second;
+}
+
+void IntentRegistry::erase_from_indexes(const Intent& intent) {
+    auto owner = byOwner.find(intent.owner);
+
+    if (owner != byOwner.end())
+        owner->second.erase(intent.id);
+
+    auto type = byTarget.find(intent.target.type);
+
+    if (type == byTarget.end())
+        return;
+
+    auto slot = type->second.find(intent.target.slot);
+
+    if (slot == type->second.end())
+        return;
+
+    slot->second.erase(intent.id);
+
+    if (slot->second.empty())
+        type->second.erase(slot);
+
+    if (type->second.empty())
+        byTarget.erase(type);
 }
 
 void IntentRegistry::destroy(IntentId id) {
+    Intent removed = intent(id);
+    ComponentTypeId type = intentTypes.at(id);
 
-    BehaviorId owner = id >> INTENT_OWNER_SHIFT;
-    std::uint16_t intent = id & LOW_16_BITS;
-
-    active[owner].erase(intent);
-    availableIds[owner].emplace_back(intent);
-
+    erase_from_indexes(removed);
+    storages.at(type)->destroy(id);
+    intentTypes.erase(id);
+    availableIds.push_back(id);
 }
 
 void IntentRegistry::destroy_owned_by(BehaviorId owner) {
+    auto found = byOwner.find(owner);
 
-    active.erase(owner);
-    availableIds.erase(owner);
+    if (found == byOwner.end())
+        return;
+
+    std::vector<IntentId> owned(found->second.begin(), found->second.end());
+
+    for (IntentId id : owned)
+        destroy(id);
+
+    byOwner.erase(owner);
 }
 
-bool IntentRegistry::exists(IntentId id) {
-
-    BehaviorId owner = id >> INTENT_OWNER_SHIFT;
-    std::uint16_t intent = id & LOW_16_BITS;
-
-    auto ownerPosition = active.find(owner);
-
-    if (ownerPosition == active.end())
-        return false;
-
-    return ownerPosition->second.contains(intent);
+bool IntentRegistry::exists(IntentId id) const {
+    return intentTypes.contains(id);
 }
 
-BehaviorId IntentRegistry::owner_of(IntentId id) {
-    return id >> INTENT_OWNER_SHIFT;
+const Intent& IntentRegistry::intent(IntentId id) const {
+    return storage_for(id).intent(id);
 }
 
-std::size_t IntentRegistry::size(BehaviorId id) {
-    auto ownerPosition = active.find(id);
+BehaviorId IntentRegistry::owner_of(IntentId id) const {
+    return intent(id).owner;
+}
 
-    if (ownerPosition == active.end())
+ComponentTarget IntentRegistry::target_of(IntentId id) const {
+    return intent(id).target;
+}
+
+IntentLifetime IntentRegistry::lifetime_of(IntentId id) const {
+    return intent(id).lifetime;
+}
+
+std::vector<IntentId> IntentRegistry::live_intent_ids() const {
+    std::vector<IntentId> live;
+    live.reserve(intentTypes.size());
+
+    for (const auto& [id, type] : intentTypes) {
+        (void)type;
+        live.push_back(id);
+    }
+
+    return live;
+}
+
+std::vector<IntentId> IntentRegistry::intents_for(ComponentTypeId type, ComponentSlotId slot) const {
+    auto typePosition = byTarget.find(type);
+
+    if (typePosition == byTarget.end())
+        return {};
+
+    auto slotPosition = typePosition->second.find(slot);
+
+    if (slotPosition == typePosition->second.end())
+        return {};
+
+    return {slotPosition->second.begin(), slotPosition->second.end()};
+}
+
+const IntentTargetIndex& IntentRegistry::target_index() const {
+    return byTarget;
+}
+
+std::size_t IntentRegistry::size(BehaviorId id) const {
+    auto ownerPosition = byOwner.find(id);
+
+    if (ownerPosition == byOwner.end())
         return 0;
 
     return ownerPosition->second.size();
+}
+
+std::size_t IntentRegistry::size() const {
+    return intentTypes.size();
+}
+
+void IntentRegistry::addBehaviour(BehaviorId id) {
+    destroy_owned_by(id);
+    byOwner[id];
 }

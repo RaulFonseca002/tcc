@@ -28,13 +28,6 @@ std::size_t Coordinator::behavior_count() {
     return behaviors.size();
 }
 
-IntentId Coordinator::create_intent(BehaviorId owner) {
-    if (!behaviors.exists(owner))
-        throw std::runtime_error("behavior id not found");
-
-    return intents.create(owner);
-}
-
 void Coordinator::destroy_intent(IntentId id) {
     intents.destroy(id);
 }
@@ -45,6 +38,26 @@ bool Coordinator::intent_exists(IntentId id) {
 
 BehaviorId Coordinator::intent_owner(IntentId id) {
     return intents.owner_of(id);
+}
+
+ComponentTarget Coordinator::intent_target(IntentId id) {
+    return intents.target_of(id);
+}
+
+IntentLifetime Coordinator::intent_lifetime(IntentId id) {
+    return intents.lifetime_of(id);
+}
+
+const Intent& Coordinator::intent(IntentId id) const {
+    return intents.intent(id);
+}
+
+std::vector<IntentId> Coordinator::intents_for(ComponentTypeId type, ComponentSlotId slot) const {
+    return intents.intents_for(type, slot);
+}
+
+const IntentTargetIndex& Coordinator::intent_target_index() const {
+    return intents.target_index();
 }
 
 std::size_t Coordinator::intent_count(BehaviorId owner) {

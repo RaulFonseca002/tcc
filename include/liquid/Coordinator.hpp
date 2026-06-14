@@ -33,10 +33,14 @@ public:
     bool behavior_exists(BehaviorId id);
     std::size_t behavior_count();
 
-    IntentId create_intent(BehaviorId owner);
     void destroy_intent(IntentId id);
     bool intent_exists(IntentId id);
     BehaviorId intent_owner(IntentId id);
+    ComponentTarget intent_target(IntentId id);
+    IntentLifetime intent_lifetime(IntentId id);
+    const Intent& intent(IntentId id) const;
+    std::vector<IntentId> intents_for(ComponentTypeId type, ComponentSlotId slot) const;
+    const IntentTargetIndex& intent_target_index() const;
     std::size_t intent_count(BehaviorId owner);
 
     template <typename SystemType, typename... Args>
@@ -117,6 +121,12 @@ public:
 
     template <typename Component>
     const Component* resolve_component(ComponentType<Component> type, ComponentSlotId slot) const;
+
+    template <typename Component>
+    IntentId create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value);
+
+    template <typename Component>
+    const ComponentIntent<Component>& typed_intent(ComponentType<Component> type, IntentId id) const;
 
     template <typename Component>
     bool can_read_component(ComponentType<Component> type, BehaviorId behavior, const std::string& name) const;
@@ -205,6 +215,24 @@ std::size_t Coordinator::system_behavior_count() const {
 template <typename Component>
 ComponentTypeId Coordinator::component_type(ComponentType<Component> type) const {
     return components.component_type(type);
+}
+
+template <typename Component>
+IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value) {
+    if (!behaviors.exists(owner))
+        throw std::runtime_error("behavior id not found");
+
+    ComponentTypeId typeId = component_type(type);
+
+    if (!components.resolve_component(type, slot))
+        throw std::runtime_error("component slot not found");
+
+    return intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value));
+}
+
+template <typename Component>
+const ComponentIntent<Component>& Coordinator::typed_intent(ComponentType<Component> type, IntentId id) const {
+    return intents.typed_intent(type, id);
 }
 
 template <typename Component>

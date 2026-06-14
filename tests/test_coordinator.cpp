@@ -68,18 +68,25 @@ int main()
     {
         Coordinator coordinator;
 
+        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        coordinator.add_component(lightType, "officeLight", Light{40});
+
         BehaviorId behavior = coordinator.create_behavior();
-        IntentId intent = coordinator.create_intent(behavior);
+        coordinator.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
+        ComponentSlotId slot = coordinator.get_components(lightType, behavior).at("officeLight");
+        IntentId intent = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{80});
 
         assert(behavior == 0);
         assert(coordinator.behavior_exists(behavior));
         assert(coordinator.behavior_count() == 1);
         assert(coordinator.intent_exists(intent));
         assert(coordinator.intent_owner(intent) == behavior);
+        assert(coordinator.intent_target(intent) == (ComponentTarget{lightType.id, slot}));
+        assert(coordinator.typed_intent(lightType, intent).value.brightness == 80);
         assert(coordinator.intent_count(behavior) == 1);
 
         expect_throw([&] {
-            coordinator.create_intent(42);
+            coordinator.create_intent(42, lightType, slot, IntentLifetime::persistent(), Light{10});
         });
 
         expect_throw([&] {
@@ -101,7 +108,7 @@ int main()
         });
 
         BehaviorId recycled = coordinator.create_behavior();
-        IntentId recreatedIntent = coordinator.create_intent(recycled);
+        IntentId recreatedIntent = coordinator.create_intent(recycled, lightType, slot, IntentLifetime::persistent(), Light{90});
 
         assert(recycled == behavior);
         assert(recreatedIntent == intent);
@@ -112,8 +119,13 @@ int main()
     {
         Coordinator coordinator;
 
+        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        coordinator.add_component(lightType, "officeLight", Light{40});
+
         BehaviorId behavior = coordinator.create_behavior();
-        IntentId intent = coordinator.create_intent(behavior);
+        coordinator.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
+        ComponentSlotId slot = coordinator.get_components(lightType, behavior).at("officeLight");
+        IntentId intent = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{80});
 
         coordinator.destroy_intent(intent);
 
@@ -238,10 +250,11 @@ int main()
 
         BehaviorId first = coordinator.create_behavior();
         BehaviorId second = coordinator.create_behavior();
-        IntentId intent = coordinator.create_intent(first);
 
         coordinator.grant_component_access(temperatureType, first, "officeTemperature", ComponentAccessMode::ReadWrite);
         coordinator.grant_component_access(temperatureType, second, "officeTemperature", ComponentAccessMode::Read);
+        ComponentSlotId temperatureSlot = coordinator.get_components(temperatureType, first).at("officeTemperature");
+        IntentId intent = coordinator.create_intent(first, temperatureType, temperatureSlot, IntentLifetime::persistent(), Temperature{24});
 
         assert(coordinator.system_has_behavior<TemperatureSystem>(first));
         assert(coordinator.system_has_behavior<TemperatureSystem>(second));

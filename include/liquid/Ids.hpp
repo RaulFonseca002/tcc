@@ -18,6 +18,24 @@ using TypeName = std::string;
 
 inline constexpr ComponentTypeId InvalidComponentTypeId =
     std::numeric_limits<ComponentTypeId>::max();
+inline constexpr ComponentSlotId InvalidComponentSlotId =
+    std::numeric_limits<ComponentSlotId>::max();
+
+struct ComponentTarget {
+    ComponentTypeId type = InvalidComponentTypeId;
+    ComponentSlotId slot = InvalidComponentSlotId;
+
+    bool operator<(const ComponentTarget& other) const {
+        if (type != other.type)
+            return type < other.type;
+
+        return slot < other.slot;
+    }
+
+    bool operator==(const ComponentTarget& other) const {
+        return type == other.type && slot == other.slot;
+    }
+};
 
 // Typed runtime handle for a registered component type.
 // The explicit TypeName creates the ComponentTypeId during registration; after
@@ -55,8 +73,10 @@ using liquid::BehaviorId;
 using liquid::ComponentAccessMode;
 using liquid::ComponentName;
 using liquid::ComponentSlotId;
+using liquid::ComponentTarget;
 using liquid::ComponentType;
 using liquid::ComponentTypeId;
+using liquid::InvalidComponentSlotId;
 using liquid::InvalidComponentTypeId;
 using liquid::IntentId;
 using liquid::Slot;

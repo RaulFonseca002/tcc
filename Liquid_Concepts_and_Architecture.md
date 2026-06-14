@@ -175,7 +175,7 @@ Examples:
 
 Intent lifetime is modeled as intent data, not as component storage and not as a single enum with all logic inside the resolver.
 
-A lifetime-managed intent can carry common lifetime status plus a specific lifetime policy, such as until-time, until-frame, until-cancelled, or future script-based lifetime data.
+A lifetime-managed intent can carry a specific lifetime policy, such as until-time, until-frame, until-cancelled, or future script-based lifetime data. Expiration logic evaluates that data without owning the intent registry.
 
 Normal code should use factories/bundles to create valid intent records and avoid missing required fields.
 
@@ -340,7 +340,9 @@ Folder responsibility:
 - ID recycling is allowed through registry APIs in M1.
 - Strong or generational IDs are deferred unless needed later.
 - Composite lookup keys may pack two 16-bit handles into one 32-bit value when that makes ownership or target lookup simpler and deterministic.
-- `IntentId` uses the high 16 bits for owner behavior and low 16 bits for the local intent index.
+- `IntentId` is now a global recyclable handle to an intent record; owner and target are stored on the record and indexed separately.
+- Component intent targets use `ComponentTypeId + ComponentSlotId` and are indexed as type -> slot -> intent IDs.
+- Type-specific intent records extend the common intent data with a component replacement value, without making intents into component rows.
 - Components should be plain data.
 - Component type is the system query signature; component names are the stable user/device-facing keys for shared component instances.
 - Access relationships hold permissions between behaviors and named component instances.

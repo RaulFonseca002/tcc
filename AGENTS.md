@@ -135,6 +135,9 @@ Do not silently implement large behavior or runtime logic.
 - Lifetime/cleanup logic may expire an intent.
 - Cleanup may delete an intent.
 - No system should mutate the semantic contents of an existing intent after creation.
+- `IntentRegistry` owns immutable typed intent records as the source of truth and keeps secondary indexes for owner and target lookup.
+- `IntentRegistry` stores data and indexes only; expiration, cancellation, resolver, and application policy live outside it.
+- Intent targets use `ComponentTypeId + ComponentSlotId` for component-state requests and are indexed as type -> slot -> intent IDs.
 - `IntentRegistry` does not validate whether an owner `BehaviorId` exists.
 - Valid behavior ownership should be enforced before calling intent APIs, normally through `Coordinator` or behavior creation flow.
 - `Coordinator::create_behavior()` must create the matching intent pool, and behavior destruction must remove that pool, so behavior state and intent-manager behavior pools stay aligned.
@@ -152,7 +155,7 @@ Current planned ID model:
 - `ComponentType<T>`: typed runtime handle returned by component registration; outside code should keep this handle and pass it back to component APIs.
 - `ComponentSlotId`: 16-bit value used as the slot handle inside one typed component storage.
 - Packed composite keys may combine two 16-bit values into one 32-bit value when the relationship is structural and stable.
-- `IntentId` currently packs owner behavior in the high 16 bits and local intent index in the low 16 bits.
+- `IntentId` is a global recyclable intent-record handle; owner and target are stored on the intent record and indexed separately.
 - IDs are handles inside the current world state, not permanent historical IDs.
 - Logs/replay later use frame/log/event identifiers for historical uniqueness.
 
@@ -182,7 +185,7 @@ Current planned ID model:
 
 - Behavior lifetime may be modeled with behavior components when needed.
 - Intent lifetime is intent metadata, not component storage.
-- M2 should introduce only the minimal lifetime model needed to mark and clean expired immutable intents.
+- M2 should introduce only the minimal lifetime model needed to evaluate and clean expired immutable intents.
 - Lifetime policies planned for M2 are until-time and until-cancelled. Until-frame or script-based lifetime can remain future work unless explicitly required.
 - Factories/bundles should be used later so required intent fields and behavior component sets are not forgotten.
 
@@ -204,11 +207,11 @@ Avoid:
 M2 is working when tests can prove:
 
 1. Intent lifetime metadata can represent persistent, until-time, and until-cancelled intents.
-2. Immutable intent records keep lifetime/status metadata separate from component storage.
-3. Expiration can mark until-time intents expired deterministically from an explicit time/frame input.
-4. Until-cancelled intents remain alive until explicitly cancelled or cleaned.
-5. Expiration status/reason can be queried without mutating semantic intent contents.
-6. Expired intents can be cleaned up through registry/coordinator flow without bypassing behavior ownership.
+2. Immutable typed intent records keep lifetime metadata and replacement values separate from component storage.
+3. Expiration can classify until-time intents deterministically from an explicit time/frame input.
+4. Until-cancelled intents do not expire from time and can be removed by the owning cleanup flow.
+5. Expiration results can be computed without mutating semantic intent contents or registry indexes.
+6. Expired intents can be deleted through registry/coordinator flow without bypassing behavior ownership.
 7. Existing M1 behavior, component, system-membership, recycling, and sanitizer-backed stress tests still pass.
 
 ---

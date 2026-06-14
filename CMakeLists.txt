@@ -10,6 +10,7 @@ add_library(liquid
     src/BehaviorRegistry.cpp
     src/ComponentRegistry.cpp
     src/Coordinator.cpp
+    src/IntentExpiration.cpp
     src/IntentRegistry.cpp
     src/SystemRegistry.cpp
 )
@@ -45,6 +46,7 @@ if(BUILD_TESTING)
         test_component_storage
         test_component_registry
         test_behavior_registry
+        test_intent_expiration
         test_intent_registry
         test_coordinator
         test_system_registry
