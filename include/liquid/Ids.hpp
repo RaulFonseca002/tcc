@@ -56,6 +56,12 @@ enum class ComponentAccessMode {
     ReadWrite
 };
 
+enum class IntentPriority : std::uint8_t {
+    Low = 55,
+    Medium = 155,
+    High = 255
+};
+
 inline constexpr std::size_t MaxBehaviours = 5000;
 inline constexpr std::size_t MaxIntents = 5000;
 inline constexpr std::size_t MaxComponentTypes = 64;
@@ -79,6 +85,7 @@ using liquid::ComponentTypeId;
 using liquid::InvalidComponentSlotId;
 using liquid::InvalidComponentTypeId;
 using liquid::IntentId;
+using liquid::IntentPriority;
 using liquid::Slot;
 using liquid::Signature;
 using liquid::TypeName;

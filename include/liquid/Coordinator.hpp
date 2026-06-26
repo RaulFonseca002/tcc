@@ -126,7 +126,7 @@ public:
     const Component* resolve_component(ComponentType<Component> type, ComponentSlotId slot) const;
 
     template <typename Component>
-    IntentId create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value);
+    IntentId create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value, IntentPriority priority = IntentPriority::Medium);
 
     template <typename Component>
     const ComponentIntent<Component>& typed_intent(ComponentType<Component> type, IntentId id) const;
@@ -221,7 +221,7 @@ ComponentTypeId Coordinator::component_type(ComponentType<Component> type) const
 }
 
 template <typename Component>
-IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value) {
+IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value, IntentPriority priority) {
     if (!behaviors.exists(owner))
         throw std::runtime_error("behavior id not found");
 
@@ -233,7 +233,7 @@ IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> t
     if (!components.can_write(type, owner, slot))
         throw std::runtime_error("component write access denied");
 
-    return intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value));
+    return intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value), priority);
 }
 
 template <typename Component>

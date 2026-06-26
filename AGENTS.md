@@ -26,36 +26,36 @@ Superposition ECS reference lives at `/home/raul/Desktop/superposition`. Use it 
 
 ## Current Coding Milestone
 
-### M3 — Intent Resolution
+### M4 — Minimal Frame Loop
 
-Goal: resolve live immutable intents into selected effect data while keeping expiration, frame execution, and adapter commands out of scope.
+Goal: introduce a minimal deterministic frame loop that calls the existing managers/systems in order while keeping adapters, events, Lua, LLM integration, simulation CLI, and physical-world application out of scope.
 
 Codex should focus only on:
 
-- `IntentResolver.hpp`
-- `IntentRegistry.hpp`
 - `Coordinator.hpp`
 - `Ids.hpp`
 - `IntentLifetime.hpp`
 - `IntentExpiration.hpp`
+- `IntentRegistry.hpp`
 - `BehaviorRegistry.hpp`
 - `ComponentStorage.hpp`
 - `ComponentRegistry.hpp`
 - `SystemRegistry.hpp`
-- `IntentResolver.cpp`
-- existing M1/M2 `.cpp` files only when needed for resolver integration
+- `Runtime.hpp`
+- `Runtime.cpp`
+- existing M1/M2/M3 `.cpp` files only when needed for frame-loop integration
 - CMake boilerplate
-- test files for the above, especially `test_intent_resolution.cpp` and regressions in existing M1/M2 tests
+- test files for the above, especially `test_runtime.cpp` and regressions in existing M1/M2/M3 tests
 
-Do not create runtime, event, adapter, Lua, LLM, or simulation systems yet.
-M3 is limited to deterministic intent resolution into selected effect data. Do not add frame execution, adapter commands, Lua, LLM integration, or a runtime loop.
+Do not create event, adapter, Lua, LLM, simulation CLI, MQTT, voice, or final Liquid Layer application systems yet.
+M4 is limited to deterministic frame ordering over existing managers/systems. Do not add adapter commands or physical-world application.
 
 ---
 
-## Current Minimal Repository Shape and M3 Additions
+## Current Minimal Repository Shape and M4 Additions
 
 Start small. Do not create folders before they are needed.
-The M3 resolver files listed here are allowed additions when implementing the current milestone.
+The M4 runtime files listed here are allowed additions when implementing the current milestone.
 
 ```text
 liquid/
@@ -70,13 +70,13 @@ liquid/
       Ids.hpp
       IntentLifetime.hpp
       IntentExpiration.hpp
-      IntentResolver.hpp
       ComponentStorage.hpp
       ComponentRegistry.hpp
       Coordinator.hpp
       BehaviorRegistry.hpp
       IntentRegistry.hpp
       SystemRegistry.hpp
+      Runtime.hpp
 
   src/
     ComponentRegistry.cpp
@@ -85,7 +85,7 @@ liquid/
     IntentRegistry.cpp
     SystemRegistry.cpp
     IntentExpiration.cpp
-    IntentResolver.cpp
+    Runtime.cpp
 
   tests/
     test_ids.cpp
@@ -97,6 +97,7 @@ liquid/
     test_system_registry.cpp
     test_intent_expiration.cpp
     test_intent_resolution.cpp
+    test_runtime.cpp
     test_stress.cpp
 ```
 
@@ -135,12 +136,12 @@ Do not silently implement large behavior or runtime logic.
 - Intents are immutable after creation.
 - Behaviors, agents, systems, events, or schedules may create intents with a `BehaviorId` owner/source.
 - Intents request component-state changes or external effects; they are not stored as components.
-- The resolver may select or ignore an intent.
+- `IntentRegistry` resolution may select or ignore an intent.
 - Lifetime/cleanup logic may expire an intent.
-- Cleanup may delete an intent.
+- Cleanup may delete an intent, and explicit deletion is the current cancellation model.
 - No system should mutate the semantic contents of an existing intent after creation.
 - `IntentRegistry` owns immutable typed intent records as the source of truth and keeps secondary indexes for owner and target lookup.
-- `IntentRegistry` stores data and indexes only; expiration, resolver, and application policy live outside it.
+- `IntentRegistry` owns intent data, indexes, expiration cleanup during resolution, and deterministic intent selection.
 - Intent targets use `ComponentTypeId + ComponentSlotId` for component-state requests and are indexed as type -> slot -> intent IDs.
 - `IntentRegistry` does not validate whether an owner `BehaviorId` exists.
 - Valid behavior ownership should be enforced before calling intent APIs, normally through `Coordinator` or behavior creation flow.
@@ -192,7 +193,7 @@ Current planned ID model:
 - Behavior lifetime may be modeled with behavior components when needed.
 - Intent lifetime is intent metadata, not component storage.
 - M2 introduced the minimal lifetime model needed to evaluate and clean expired immutable intents.
-- Current lifetime policies are persistent and until-time. Until-frame, cancellation events, or script-based lifetime can remain future work unless explicitly required.
+- Current lifetime policies are persistent and until-time. Explicit cancellation is represented by destroying the intent. Until-frame, cancellation events, or script-based lifetime can remain future work unless explicitly required.
 - Factories/bundles should be used later so required intent fields and behavior component sets are not forgotten.
 
 ### Serialization/Reproducibility
@@ -210,26 +211,22 @@ Avoid:
 
 ## Current Success Criteria
 
-M3 is working when tests can prove:
+M4 is working when tests can prove:
 
-1. Live component intents can be grouped by `ComponentTypeId + ComponentSlotId`.
-2. Resolver policy can deterministically select one intent for a target.
-3. Compatible merge behavior is explicit, even if the first implementation only supports replacement selection.
-4. Selected output is effect data, not direct component mutation or adapter commands.
-5. Expired or invalidated intents are not reintroduced by resolution.
-6. Existing M1/M2 behavior, component, system-membership, intent lifetime, cleanup, recycling, and sanitizer-backed stress tests still pass.
+1. A frame context carries deterministic frame/time input.
+2. The minimal loop calls cleanup/resolution/system coordination in documented order.
+3. The loop can record a small frame log stub without applying adapter commands.
+4. Existing M1/M2/M3 behavior, component, system-membership, intent lifetime, cleanup, resolution, recycling, and sanitizer-backed stress tests still pass.
 
 ---
 
 ## What Not to Build Yet
 
-Do not add these during M3:
+Do not add these during M4:
 
-- `runtime/`
 - `events/`
 - `systems/`
 - `adapters/`
-- frame loop
 - Lua integration
 - LLM integration
 - simulation CLI
@@ -241,10 +238,10 @@ Do not add these during M3:
 
 - M1 is complete: ECS-style behavior identity, typed component storage/registry, coordinator-owned signatures, intent owner pools, system membership, expanded assert tests, stress tests, and opt-in sanitizer builds are in place.
 - M2 intent lifetime and expiration is complete and uses `Coordinator` as the public world interface instead of bypassing behavior ownership checks.
-- M3 intent resolution should consume the existing component query surface: behavior/type access produces `name -> ComponentSlotId`, and component data is resolved through coordinator/registry APIs.
-- System coordination is implemented as template-addressed system registration, signatures, behavior membership, and membership callbacks. Execution/frame ordering belongs to the future deterministic runtime/frame-loop milestone.
+- M3 intent resolution is complete: behavior/type access produces `name -> ComponentSlotId`, `IntentRegistry` returns `name -> selected IntentId`, and later application resolves component data through coordinator/registry APIs.
+- System coordination is implemented as template-addressed system registration, signatures, behavior membership, and membership callbacks. Execution/frame ordering belongs to the current M4 deterministic runtime/frame-loop milestone.
 - When systems are introduced, `Coordinator` should remain responsible for registering systems, storing or forwarding system `Signature`s, matching behavior signatures to systems, and updating system membership whenever component access changes or a behavior/component is destroyed.
-- System execution/frame ordering is missing by design; it belongs with the future deterministic runtime/frame-loop milestone after the M1 system registry/interface exists.
+- System execution/frame ordering is missing by design; it belongs with the current M4 deterministic runtime/frame-loop milestone after the M1 system registry/interface exists.
 - Future systems, runtime loops, and adapters should not store direct component pointers as long-term state; use behavior IDs, component type handles, component names, and slots as handles that can be validated each frame.
 
 Only add these when `DEVELOPMENT_TRACKING.md` says the next milestone requires them.

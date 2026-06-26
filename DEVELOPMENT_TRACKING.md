@@ -258,19 +258,27 @@ Expected concepts:
 - until-time expiration;
 - persistent intents that do not expire from time;
 - cleanup of expired intents.
+- explicit cancellation by destroying an intent.
 
 Current implementation direction:
 
 - Keep intent lifetime as intent metadata, not component storage.
 - Keep `Coordinator` as the public boundary for behavior-owned intent creation and cleanup.
 - Keep `IntentRegistry` as the source of truth for typed intent records, with secondary indexes for owner cleanup and `ComponentTypeId -> ComponentSlotId` target lookup.
-- Keep expiration policy outside `IntentRegistry`; the registry stores data and deletes records when asked.
+- M2 baseline: keep expiration classification outside `IntentRegistry`; the registry stores data and deletes records when asked. M3 supersedes this only for resolution-time cleanup inside `IntentRegistry::resolve(...)`.
 - Require current write access when `Coordinator` creates component-target intents.
 - Destroy coordinator-owned intents when their target component slot is removed or when their owner loses write access to that target.
 - Add deterministic expiration logic that receives explicit time/frame input rather than depending on wall-clock globals.
 - Classify expired intents without mutating their semantic request contents or registry indexes.
 - Destroy expired intents in two phases: collect IDs first, then delete, so cleanup never removes while iterating.
 - Cleanup may remove expired intents through the existing registry/coordinator flow.
+- Explicit cancellation currently means destroying the intent record; no canceled lifetime state is stored.
+
+M3 supersession note:
+
+- M2 kept expiration classification outside `IntentRegistry`.
+- M3 deliberately moves resolution-time expiration deletion into `IntentRegistry::resolve(...)` because resolution mutates registry-owned records and indexes.
+- The standalone expiration helpers remain useful for direct cleanup tests and future loop orchestration, but registry-owned resolution is the source of truth for resolving a component type.
 
 Likely new files:
 
@@ -297,36 +305,38 @@ Success criteria:
 
 ### M3 — Intent Resolution
 
-**Status:** Current
+**Status:** Done
+
+Completion note:
+
+M3 adds registry-owned intent resolution with explicit `IntentPriority`, resolution-time expiration cleanup inside `IntentRegistry::resolve(...)`, deterministic highest-priority/highest-ID selection, and `ComponentName -> IntentId` output for one component type at a time. It does not add a frame loop, component mutation, adapter commands, or runtime execution.
 
 Goal:
 
-Resolve alive intents into selected effects.
+Clean expired intents and resolve remaining intent candidates into selected intent handles.
 
 Expected concepts:
 
 - intent target;
 - intent value;
 - intent priority;
-- target-key queues or heaps for competing intents;
-- merge policy for compatible intents;
+- component-name to slot maps for competing intents;
+- future merge policy for compatible intents;
 - intent source metadata;
-- resolver policies;
-- selected effect output.
+- deterministic registry selection policy;
+- selected intent handle output.
 
 Current implementation direction:
 
-- Resolve only live intent records exposed through `Coordinator`/`IntentRegistry`; expiration remains separate.
-- Group competing component intents by `ComponentTypeId + ComponentSlotId`.
-- Produce selected effects as data; do not mutate components, run a frame loop, or emit adapter commands in M3.
-- Keep resolver policy explicit and deterministic enough for later replay.
-- Reuse the existing common `Intent` and typed intent records unless implementation pressure justifies a split.
+- `IntentRegistry::resolve(...)` collects expired intent IDs and destroys them before selection when explicit time input is provided.
+- Resolve one component type at a time from a prepared `ComponentName -> ComponentSlotId` map.
+- Produce `ComponentName -> IntentId` selections; do not mutate components, run a frame loop, or emit adapter commands in M3.
+- Keep registry selection deterministic: highest priority wins, then highest `IntentId`.
+- Keep component-specific merge as future work via external traits/free functions, not functions stored in component data.
 
 Likely new files:
 
 ```text
-include/liquid/IntentResolver.hpp
-src/IntentResolver.cpp
 tests/test_intent_resolution.cpp
 ```
 
@@ -334,7 +344,7 @@ tests/test_intent_resolution.cpp
 
 ### M4 — Minimal Frame Loop
 
-**Status:** Planned
+**Status:** Current
 
 Goal:
 
@@ -351,6 +361,22 @@ Expected concepts:
 - frame log stub.
 
 This is the first milestone where a `runtime/` folder may become justified.
+
+Current implementation direction:
+
+- Keep the loop deterministic and explicit; no wall-clock globals.
+- Use existing managers rather than adding new behavior/component/intent ownership rules.
+- Call intent cleanup/resolution through the existing `IntentRegistry`/`Coordinator` surfaces.
+- Add only the minimal frame context/log shape needed to prove ordering.
+- Do not add adapters, events, Lua, LLM integration, simulation CLI, or physical-world application.
+
+Likely new files:
+
+```text
+include/liquid/Runtime.hpp
+src/Runtime.cpp
+tests/test_runtime.cpp
+```
 
 ---
 
@@ -423,10 +449,11 @@ When a milestone is completed:
 
 ## Current Notes
 
-- The current coding focus is M3 intent resolution.
+- The current coding focus is M4 minimal frame loop.
 - M1 modified ECS core is complete and should be treated as foundation, not active scope.
 - M2 now uses typed intent-record storage with owner and component-target indexes; `IntentId` no longer encodes the owner behavior.
-- M3 should resolve live intents into selected effect data without adding a frame loop, systems folder, runtime, or adapters.
+- M3 registry-owned intent resolution is complete and should be treated as foundation, not active scope.
+- M4 should introduce the smallest deterministic frame loop without adapters, events, Lua, LLM integration, simulation CLI, or physical-world application.
 - The project owner will implement core logic manually.
 - Codex should generate headers, tests, CMake, and boilerplate unless explicitly asked to implement logic.
 - The current structure is intentionally small to keep the project controllable.

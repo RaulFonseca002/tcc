@@ -18,6 +18,7 @@ struct Intent {
     BehaviorId owner = 0;
     ComponentTarget target;
     IntentLifetime lifetime;
+    IntentPriority priority = IntentPriority::Medium;
 };
 
 template <typename Component>
@@ -103,7 +104,7 @@ private:
 
 public:
     template <typename Component>
-    IntentId create(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value);
+    IntentId create(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value, IntentPriority priority = IntentPriority::Medium);
 
     void destroy(IntentId id);
     void destroy_owned_by(BehaviorId owner);
@@ -121,6 +122,7 @@ public:
     std::vector<IntentId> live_intent_ids() const;
     std::vector<IntentId> intents_for(ComponentTypeId type, ComponentSlotId slot) const;
     const IntentTargetIndex& target_index() const;
+    std::map<ComponentName, IntentId> resolve(ComponentTypeId type, const std::map<ComponentName, ComponentSlotId>& components, IntentTime now);
 
     std::size_t size(BehaviorId id) const;
     std::size_t size() const;
@@ -164,7 +166,7 @@ std::shared_ptr<const IntentStorage<Component>> IntentRegistry::storage_for(Comp
 }
 
 template <typename Component>
-IntentId IntentRegistry::create(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value) {
+IntentId IntentRegistry::create(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value, IntentPriority priority) {
     if (!byOwner.contains(owner))
         throw std::runtime_error("behavior intent pool not found");
 
@@ -176,7 +178,7 @@ IntentId IntentRegistry::create(BehaviorId owner, ComponentType<Component> type,
 
     IntentId id = next_intent_id();
 
-    ComponentIntent<Component> record{{id, owner, {type.id, slot}, lifetime}, std::move(value)};
+    ComponentIntent<Component> record{{id, owner, {type.id, slot}, lifetime, priority}, std::move(value)};
 
     storage_for(type)->add(std::move(record));
     intentTypes.emplace(id, type.id);

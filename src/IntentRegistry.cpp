@@ -2,6 +2,14 @@
 
 #include <stdexcept>
 
+namespace {
+
+int priority_value(IntentPriority priority) {
+    return static_cast<int>(priority);
+}
+
+}
+
 IntentId IntentRegistry::next_intent_id() {
     if (intentTypes.size() >= MAX_INTENTS && availableIds.empty())
         throw std::runtime_error("all the intents are already in use");
@@ -126,6 +134,45 @@ std::vector<IntentId> IntentRegistry::intents_for(ComponentTypeId type, Componen
 
 const IntentTargetIndex& IntentRegistry::target_index() const {
     return byTarget;
+}
+
+std::map<ComponentName, IntentId> IntentRegistry::resolve(ComponentTypeId type, const std::map<ComponentName, ComponentSlotId>& components, IntentTime now) {
+    std::vector<IntentId> expired;
+
+    for (IntentId id : live_intent_ids()) {
+        IntentLifetime lifetime = lifetime_of(id);
+
+        if (lifetime.kind == IntentLifetimeKind::UntilTime && now >= lifetime.expiresAt)
+            expired.push_back(id);
+    }
+
+    for (IntentId id : expired)
+        destroy(id);
+
+    std::map<ComponentName, IntentId> selected;
+
+    for (const auto& [name, slot] : components) {
+        IntentId selectedIntent = 0;
+        IntentPriority selectedPriority = IntentPriority::Low;
+        bool hasSelection = false;
+
+        for (IntentId id : intents_for(type, slot)) {
+            const Intent& candidate = intent(id);
+
+            if (!hasSelection ||
+                priority_value(candidate.priority) > priority_value(selectedPriority) ||
+                (candidate.priority == selectedPriority && id > selectedIntent)) {
+                selectedIntent = id;
+                selectedPriority = candidate.priority;
+                hasSelection = true;
+            }
+        }
+
+        if (hasSelection)
+            selected.emplace(name, selectedIntent);
+    }
+
+    return selected;
 }
 
 std::size_t IntentRegistry::size(BehaviorId id) const {

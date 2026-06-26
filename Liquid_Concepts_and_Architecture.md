@@ -1,10 +1,10 @@
 # Liquid Concepts and Architecture v0.2
 
-**Status:** Living baseline after M2
+**Status:** Living baseline during M3 intent resolution
 **Scope:** Conceptual architecture, vocabulary, and accepted design direction  
 **Project:** Liquid Layer  
 **Engine / framework:** Liquid  
-**Current development stage:** Solid, M3 intent resolution
+**Current development stage:** Solid, M4 minimal frame loop
 **Date:** June 2026
 
 ---
@@ -25,7 +25,7 @@ The project is divided into three conceptual layers.
 |---|---|---|
 | **Liquid Layer** | Final application/research project focused on adaptive smart environments for neurodivergent people. | Future project layer |
 | **Liquid** | Standalone engine/framework/runtime used by Liquid Layer and by simulation/data-collection tools. | Engine repo |
-| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1-M2 complete; M3 current |
+| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1-M3 complete; M4 current |
 | **Liquid stage** | Later implementation stage: adaptive/LLM layer that creates, modifies, and explains Solid blocks. | Future focus |
 
 The internal code should not overuse metaphorical names. Folder and file names should describe responsibility: `vocabulary`, `core`, `runtime`, `events`, `behaviors`, `intents`, `systems`, and `adapters`.
@@ -141,7 +141,7 @@ A behavior may be persistent, temporary, scheduled, manually triggered, or gener
 
 ### Agent
 
-An agent is a behavior-like actor driven by adaptive reasoning. Agents live conceptually beside behaviors, but they follow stricter boundaries. They may propose intents, propose new behaviors, or ask for confirmation. They do not directly mutate components or bypass the resolver.
+An agent is a behavior-like actor driven by adaptive reasoning. Agents live conceptually beside behaviors, but they follow stricter boundaries. They may propose intents, propose new behaviors, or ask for confirmation. They do not directly mutate components or bypass registry-owned intent resolution.
 
 ### Component
 
@@ -159,7 +159,7 @@ For example, a future script system would process behaviors with script-related 
 
 ### Intent
 
-An intent is a proposed component-state change or external effect. It is not immediately applied. Intents are produced by behaviors, agents, systems, events, or schedules; the resolver decides which intents become component changes or effects.
+An intent is a proposed component-state change or external effect. It is not immediately applied. Intents are produced by behaviors, agents, systems, events, or schedules; `IntentRegistry` resolves selected intent handles for component targets.
 
 Intents are not components. They are immutable records with owner/source, target, value or operation, priority, lifetime metadata, and merge/conflict policy data.
 
@@ -173,15 +173,15 @@ Examples:
 
 ### Lifetime
 
-Intent lifetime is modeled as intent data, not as component storage and not as a single enum with all logic inside the resolver.
+Intent lifetime is modeled as intent data, not as component storage.
 
-M2 implements persistent and until-time lifetimes. Until-frame, future cancellation events, and script-based lifetime data remain future policies. Expiration logic evaluates lifetime data without owning the intent registry.
+M2 implements persistent and until-time lifetimes. Until-frame, future cancellation events, and script-based lifetime data remain future policies. M3 resolution-time cleanup happens inside `IntentRegistry::resolve(...)` because it deletes registry-owned records and updates registry-owned indexes.
 
 Normal code should use factories/bundles to create valid intent records and avoid missing required fields.
 
 ### Resolved Effect
 
-A resolved effect is the result of intent resolution. It is the core's accepted output for a target after conflicts have been resolved.
+A resolved effect is the future result of applying a selected intent. Current M3 resolution returns `ComponentName -> IntentId`; later runtime/application work will turn selected handles into component changes or adapter-facing effects.
 
 ### Command / Adapter Action
 
@@ -202,8 +202,8 @@ Behavior / Agent components
     -> processed by systems, events, or schedules
     -> creates an Intent owned by a behavior or agent
     -> Intent exists as immutable runtime data
-    -> Expiration logic identifies and removes expired intents
-    -> IntentResolver resolves active intents by target
+    -> IntentRegistry removes expired intents during resolution
+    -> IntentRegistry resolves active intents by component name and target slot
     -> Accepted intents change component state or produce effects
     -> ResolvedEffect is produced
     -> Adapter turns effect into external command/action
@@ -211,10 +211,10 @@ Behavior / Agent components
 
 Important rules:
 
-- The resolver does not ask each behavior what it wants every frame.
+- Intent resolution does not ask each behavior what it wants every frame.
 - Systems, events, schedules, or agents add intents to the world, usually on behalf of a behavior or agent owner.
 - Active intents remain until lifetime metadata marks them expired or cleanup removes them.
-- Intent queues may be organized by target key, with a priority heap per target so conflict and merge checks stay local to the affected component or effect.
+- Intent queues may be organized by target key, with priority per target so conflict and merge checks stay local to the affected component or effect.
 - Explicit user intent should normally outrank background behaviors.
 - LLM-based arbitration is not a default conflict policy.
 - If an LLM or script check is slow, it should run asynchronously and report back through events.
@@ -237,7 +237,7 @@ Accepted baseline:
 - trusted component resolution uses the registered component type handle plus the slot after coordinator validation;
 - intents are immutable proposal records, not component rows;
 - intent target keys should identify the component instance or external effect being changed;
-- intent queues can use per-target priority heaps so the resolver can inspect the strongest candidate and merge compatible proposals;
+- intent queues can use per-target priority so registry resolution can inspect the strongest candidate and future merge logic can combine compatible proposals;
 - use factories or bundles so required component sets and intent fields are readable and hard to misuse;
 - use validation systems to detect invalid behavior component combinations and invalid intent records.
 
@@ -262,7 +262,7 @@ Intent record:
   merge/conflict policy
 ```
 
-The scheduler/runtime should not need to know every intent policy detail. Dedicated resolver/expiration logic processes intent records and applies accepted changes deterministically.
+The scheduler/runtime should not need to know every intent policy detail. `IntentRegistry` owns resolution-time cleanup and selected-handle resolution; later runtime work applies accepted selections deterministically.
 
 ---
 
@@ -321,7 +321,7 @@ Folder responsibility:
 | `runtime/` | Frame context, frame loop, runtime orchestration. |
 | `events/` | Events entering the runtime and event queue/log definitions. |
 | `behaviors/` | Behavior metadata, behavior components, behavior factories. |
-| `intents/` | Intent records, queues, factories/bundles, resolver, resolved effects. |
+| `intents/` | Intent records, queues, factories/bundles, resolution policy, resolved effects. |
 | `systems/` | Systems that run over world data during frames. |
 | `adapters/` | External boundary: CLI, simulation, MQTT, future web/voice. |
 
@@ -355,8 +355,8 @@ Folder responsibility:
 - Intent owner pools are aligned with behavior creation/destruction through `Coordinator`.
 - Coordinator-created component intents require write access and are cleaned up when their target slot or owner write access becomes invalid.
 - The completed M1 test suite uses assert binaries, deterministic stress coverage, and an opt-in AddressSanitizer/UBSan CMake mode.
-- Intent resolution should be target-oriented; per-target priority queues/heaps are the preferred starting point unless implementation evidence suggests otherwise.
-- A decided intent becomes a resolved effect, then an adapter command/action.
+- Intent resolution should be target-oriented; current M3 resolves one component type from `ComponentName -> ComponentSlotId` into `ComponentName -> IntentId`.
+- A selected intent handle later becomes a resolved effect, then an adapter command/action.
 - Completed M2 intent lifetime is persistent or until-time; future factories/bundles should create valid intent records without missing required metadata.
 - No C++ inheritance between components in v1.
 - LLM conflict resolution is not a default mechanism.

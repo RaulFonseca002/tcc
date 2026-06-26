@@ -48,6 +48,7 @@ if(BUILD_TESTING)
         test_behavior_registry
         test_intent_expiration
         test_intent_registry
+        test_intent_resolution
         test_coordinator
         test_system_registry
         test_stress
