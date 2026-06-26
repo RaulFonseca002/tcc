@@ -1,7 +1,9 @@
 #pragma once
 
 #include "liquid/Ids.hpp"
+#include "liquid/IntentLifetime.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <set>
@@ -10,7 +12,9 @@
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
+class World;
 class SystemRegistry;
 
 class System {
@@ -24,6 +28,7 @@ public:
 
     virtual void on_behavior_added(BehaviorId behavior);
     virtual void on_behavior_removed(BehaviorId behavior);
+    virtual void run(World& world, FrameNumber frame, IntentTime now);
 };
 
 class SystemRegistry {
@@ -34,6 +39,7 @@ private:
     };
 
     std::unordered_map<std::type_index, SystemRecord> systems;
+    std::vector<std::type_index> registrationOrder;
 
 public:
     SystemRegistry() = default;
@@ -75,6 +81,7 @@ public:
 
     void update_behavior(BehaviorId behavior, Signature behaviorSignature);
     void remove_behavior(BehaviorId behavior);
+    std::size_t run_systems(World& world, FrameNumber frame, IntentTime now);
 };
 
 template <typename SystemType, typename... Args>
@@ -87,6 +94,7 @@ void SystemRegistry::register_system(Args&&... args) {
         throw std::runtime_error("system already registered");
 
     systems.emplace(type, SystemRecord{{}, std::make_shared<SystemType>(std::forward<Args>(args)...)});
+    registrationOrder.push_back(type);
 }
 
 template <typename SystemType>
@@ -96,7 +104,13 @@ void SystemRegistry::destroy_system() {
     if (found == systems.end())
         throw std::runtime_error("system not registered");
 
+    std::type_index type = std::type_index(typeid(SystemType));
+
     systems.erase(found);
+    registrationOrder.erase(
+        std::remove(registrationOrder.begin(), registrationOrder.end(), type),
+        registrationOrder.end()
+    );
 }
 
 template <typename SystemType>

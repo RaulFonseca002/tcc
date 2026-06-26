@@ -1,6 +1,6 @@
 #include "liquid/BehaviorRegistry.hpp"
 #include "liquid/ComponentRegistry.hpp"
-#include "liquid/Coordinator.hpp"
+#include "liquid/world/World.hpp"
 #include "liquid/IntentRegistry.hpp"
 
 #include <algorithm>
@@ -223,7 +223,7 @@ void stress_component_registry()
     }
 }
 
-struct CoordinatorModel {
+struct WorldModel {
     std::set<BehaviorId> liveBehaviors;
     std::map<BehaviorId, std::set<std::string>> lightAccess;
     std::map<BehaviorId, std::set<std::string>> temperatureAccess;
@@ -231,15 +231,15 @@ struct CoordinatorModel {
     std::set<std::string> liveTemperatures;
 };
 
-void assert_coordinator_model(
-    Coordinator& coordinator,
+void assert_world_model(
+    World& world,
     ComponentType<StressLight> lightType,
     ComponentType<StressTemperature> temperatureType,
-    const CoordinatorModel& model)
+    const WorldModel& model)
 {
     for (BehaviorId behavior : model.liveBehaviors) {
-        auto lightComponents = coordinator.get_components(lightType, behavior);
-        auto temperatureComponents = coordinator.get_components(temperatureType, behavior);
+        auto lightComponents = world.get_components(lightType, behavior);
+        auto temperatureComponents = world.get_components(temperatureType, behavior);
 
         std::set<std::string> expectedLights;
         std::set<std::string> expectedTemperatures;
@@ -265,50 +265,50 @@ void assert_coordinator_model(
 
         for (const std::string& name : expectedLights) {
             assert(lightComponents.contains(name));
-            assert(coordinator.resolve_component(lightType, lightComponents.at(name)) != nullptr);
+            assert(world.resolve_component(lightType, lightComponents.at(name)) != nullptr);
         }
 
         for (const std::string& name : expectedTemperatures) {
             assert(temperatureComponents.contains(name));
-            assert(coordinator.resolve_component(temperatureType, temperatureComponents.at(name)) != nullptr);
+            assert(world.resolve_component(temperatureType, temperatureComponents.at(name)) != nullptr);
         }
 
-        Signature signature = coordinator.behavior_signature(behavior);
+        Signature signature = world.behavior_signature(behavior);
         bool hasLight = !expectedLights.empty();
         bool hasTemperature = !expectedTemperatures.empty();
 
         assert(signature.test(lightType.id) == hasLight);
         assert(signature.test(temperatureType.id) == hasTemperature);
-        assert(coordinator.system_has_behavior<StressLightSystem>(behavior) == hasLight);
-        assert(coordinator.system_has_behavior<StressTemperatureSystem>(behavior) == hasTemperature);
-        assert(coordinator.system_has_behavior<StressCombinedSystem>(behavior) == (hasLight && hasTemperature));
+        assert(world.system_has_behavior<StressLightSystem>(behavior) == hasLight);
+        assert(world.system_has_behavior<StressTemperatureSystem>(behavior) == hasTemperature);
+        assert(world.system_has_behavior<StressCombinedSystem>(behavior) == (hasLight && hasTemperature));
     }
 }
 
-void stress_coordinator()
+void stress_world()
 {
     std::mt19937 rng(0x123456u);
-    Coordinator coordinator;
-    CoordinatorModel model;
+    World world;
+    WorldModel model;
 
-    ComponentType<StressLight> lightType = coordinator.register_component<StressLight>("StressLight");
-    ComponentType<StressTemperature> temperatureType = coordinator.register_component<StressTemperature>("StressTemperature");
+    ComponentType<StressLight> lightType = world.register_component<StressLight>("StressLight");
+    ComponentType<StressTemperature> temperatureType = world.register_component<StressTemperature>("StressTemperature");
     std::vector<std::string> lightNames{"l0", "l1", "l2"};
     std::vector<std::string> temperatureNames{"t0", "t1", "t2"};
 
     for (const std::string& name : lightNames) {
-        coordinator.add_component(lightType, name, StressLight{1});
+        world.add_component(lightType, name, StressLight{1});
         model.liveLights.insert(name);
     }
 
     for (const std::string& name : temperatureNames) {
-        coordinator.add_component(temperatureType, name, StressTemperature{1});
+        world.add_component(temperatureType, name, StressTemperature{1});
         model.liveTemperatures.insert(name);
     }
 
-    coordinator.register_system<StressLightSystem>();
-    coordinator.register_system<StressTemperatureSystem>();
-    coordinator.register_system<StressCombinedSystem>();
+    world.register_system<StressLightSystem>();
+    world.register_system<StressTemperatureSystem>();
+    world.register_system<StressCombinedSystem>();
 
     Signature lightSignature;
     lightSignature.set(lightType.id);
@@ -316,9 +316,9 @@ void stress_coordinator()
     temperatureSignature.set(temperatureType.id);
     Signature combinedSignature = lightSignature | temperatureSignature;
 
-    coordinator.set_system_signature<StressLightSystem>(lightSignature);
-    coordinator.set_system_signature<StressTemperatureSystem>(temperatureSignature);
-    coordinator.set_system_signature<StressCombinedSystem>(combinedSignature);
+    world.set_system_signature<StressLightSystem>(lightSignature);
+    world.set_system_signature<StressTemperatureSystem>(temperatureSignature);
+    world.set_system_signature<StressCombinedSystem>(combinedSignature);
 
     std::vector<BehaviorId> activeBehaviors;
 
@@ -326,7 +326,7 @@ void stress_coordinator()
         int operation = static_cast<int>(rng() % 12);
 
         if (operation < 2) {
-            BehaviorId behavior = coordinator.create_behavior();
+            BehaviorId behavior = world.create_behavior();
             model.liveBehaviors.insert(behavior);
             activeBehaviors.push_back(behavior);
         } else if (operation < 4 && !activeBehaviors.empty()) {
@@ -334,7 +334,7 @@ void stress_coordinator()
             std::size_t index = distribution(rng);
             BehaviorId behavior = activeBehaviors[index];
 
-            coordinator.destroy_behavior(behavior);
+            world.destroy_behavior(behavior);
             model.liveBehaviors.erase(behavior);
             model.lightAccess.erase(behavior);
             model.temperatureAccess.erase(behavior);
@@ -345,7 +345,7 @@ void stress_coordinator()
             const std::string& name = random_element(lightNames, rng);
 
             if (model.liveLights.contains(name)) {
-                coordinator.grant_component_access(lightType, behavior, name, ComponentAccessMode::ReadWrite);
+                world.grant_component_access(lightType, behavior, name, ComponentAccessMode::ReadWrite);
                 model.lightAccess[behavior].insert(name);
             }
         } else if (operation < 9 && !activeBehaviors.empty()) {
@@ -353,7 +353,7 @@ void stress_coordinator()
             const std::string& name = random_element(temperatureNames, rng);
 
             if (model.liveTemperatures.contains(name)) {
-                coordinator.grant_component_access(temperatureType, behavior, name, ComponentAccessMode::Read);
+                world.grant_component_access(temperatureType, behavior, name, ComponentAccessMode::Read);
                 model.temperatureAccess[behavior].insert(name);
             }
         } else if (operation == 9 && !activeBehaviors.empty()) {
@@ -361,14 +361,14 @@ void stress_coordinator()
             const std::string& name = random_element(lightNames, rng);
 
             if (model.liveLights.contains(name)) {
-                coordinator.revoke_component_access(lightType, behavior, name);
+                world.revoke_component_access(lightType, behavior, name);
                 model.lightAccess[behavior].erase(name);
             }
         } else if (operation == 10) {
             const std::string& name = random_element(lightNames, rng);
 
             if (model.liveLights.contains(name)) {
-                coordinator.remove_component(lightType, name);
+                world.remove_component(lightType, name);
                 model.liveLights.erase(name);
 
                 for (auto& [behavior, accesses] : model.lightAccess) {
@@ -376,14 +376,14 @@ void stress_coordinator()
                     accesses.erase(name);
                 }
             } else {
-                coordinator.add_component(lightType, name, StressLight{step});
+                world.add_component(lightType, name, StressLight{step});
                 model.liveLights.insert(name);
             }
         } else {
             const std::string& name = random_element(temperatureNames, rng);
 
             if (model.liveTemperatures.contains(name)) {
-                coordinator.remove_component(temperatureType, name);
+                world.remove_component(temperatureType, name);
                 model.liveTemperatures.erase(name);
 
                 for (auto& [behavior, accesses] : model.temperatureAccess) {
@@ -391,13 +391,13 @@ void stress_coordinator()
                     accesses.erase(name);
                 }
             } else {
-                coordinator.add_component(temperatureType, name, StressTemperature{step});
+                world.add_component(temperatureType, name, StressTemperature{step});
                 model.liveTemperatures.insert(name);
             }
         }
 
-        assert(coordinator.behavior_count() == model.liveBehaviors.size());
-        assert_coordinator_model(coordinator, lightType, temperatureType, model);
+        assert(world.behavior_count() == model.liveBehaviors.size());
+        assert_world_model(world, lightType, temperatureType, model);
     }
 }
 
@@ -406,7 +406,7 @@ int main()
     stress_behavior_registry();
     stress_intent_registry();
     stress_component_registry();
-    stress_coordinator();
+    stress_world();
 
     return 0;
 }

@@ -1,10 +1,7 @@
 #pragma once
 
-#include "liquid/BehaviorRegistry.hpp"
-#include "liquid/ComponentRegistry.hpp"
 #include "liquid/Ids.hpp"
-#include "liquid/IntentRegistry.hpp"
-#include "liquid/SystemRegistry.hpp"
+#include "liquid/world/WorldState.hpp"
 
 #include <cstddef>
 #include <map>
@@ -14,22 +11,19 @@
 #include <utility>
 #include <vector>
 
+class World;
+
 class Coordinator {
 private:
-    // Coordinator is the public world interface. The lower registries do the
-    // local work, while Coordinator keeps their lifetimes, permissions, and
-    // behavior signatures in sync.
-    ComponentRegistry components;
-    BehaviorRegistry behaviors;
-    IntentRegistry intents;
-    SystemRegistry systems;
-    std::map<BehaviorId, Signature> behaviorSignatures;
+    WorldState& state;
 
     void update_system_memberships(BehaviorId behavior);
     void destroy_intents_for_target(ComponentTypeId type, ComponentSlotId slot);
     void destroy_intents_for_owner_target(BehaviorId owner, ComponentTypeId type, ComponentSlotId slot);
 
 public:
+    explicit Coordinator(WorldState& state);
+
     BehaviorId create_behavior();
     void destroy_behavior(BehaviorId id);
     bool behavior_exists(BehaviorId id);
@@ -44,6 +38,11 @@ public:
     std::vector<IntentId> live_intent_ids() const;
     std::vector<IntentId> intents_for(ComponentTypeId type, ComponentSlotId slot) const;
     const IntentTargetIndex& intent_target_index() const;
+    std::map<ComponentName, IntentId> resolve_intents(
+        ComponentTypeId type,
+        const std::map<ComponentName, ComponentSlotId>& components,
+        IntentTime now
+    );
     std::size_t intent_count(BehaviorId owner);
 
     template <typename SystemType, typename... Args>
@@ -56,6 +55,7 @@ public:
     bool system_exists() const;
 
     std::size_t system_count() const;
+    std::size_t run_systems(World& world, FrameNumber frame, IntentTime now);
 
     template <typename SystemType>
     void set_system_signature(Signature signature);
@@ -142,33 +142,33 @@ public:
 
 template <typename Component>
 ComponentType<Component> Coordinator::register_component(TypeName typeName) {
-    return components.register_component<Component>(std::move(typeName));
+    return state.components.register_component<Component>(std::move(typeName));
 }
 
 inline ComponentTypeId Coordinator::component_type(const TypeName& typeName) const {
-    return components.component_type(typeName);
+    return state.components.component_type(typeName);
 }
 
 template <typename SystemType, typename... Args>
 void Coordinator::register_system(Args&&... args) {
-    systems.register_system<SystemType>(std::forward<Args>(args)...);
+    state.systems.register_system<SystemType>(std::forward<Args>(args)...);
 }
 
 template <typename SystemType>
 void Coordinator::destroy_system() {
-    systems.destroy_system<SystemType>();
+    state.systems.destroy_system<SystemType>();
 }
 
 template <typename SystemType>
 bool Coordinator::system_exists() const {
-    return systems.exists<SystemType>();
+    return state.systems.exists<SystemType>();
 }
 
 template <typename SystemType>
 void Coordinator::set_system_signature(Signature signature) {
-    systems.set_signature<SystemType>(signature);
+    state.systems.set_signature<SystemType>(signature);
 
-    for (const auto& [behavior, behaviorSignature] : behaviorSignatures) {
+    for (const auto& [behavior, behaviorSignature] : state.behaviorSignatures) {
         (void)behaviorSignature;
         update_system_memberships(behavior);
     }
@@ -176,107 +176,107 @@ void Coordinator::set_system_signature(Signature signature) {
 
 template <typename SystemType>
 Signature Coordinator::system_signature() const {
-    return systems.signature<SystemType>();
+    return state.systems.signature<SystemType>();
 }
 
 template <typename SystemType>
 SystemType& Coordinator::get_system() {
-    return systems.get_system<SystemType>();
+    return state.systems.get_system<SystemType>();
 }
 
 template <typename SystemType>
 const SystemType& Coordinator::get_system() const {
-    return systems.get_system<SystemType>();
+    return state.systems.get_system<SystemType>();
 }
 
 template <typename SystemType>
 void Coordinator::add_behavior_to_system(BehaviorId behavior) {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    systems.add_behavior<SystemType>(behavior);
+    state.systems.add_behavior<SystemType>(behavior);
 }
 
 template <typename SystemType>
 void Coordinator::remove_behavior_from_system(BehaviorId behavior) {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    systems.remove_behavior<SystemType>(behavior);
+    state.systems.remove_behavior<SystemType>(behavior);
 }
 
 template <typename SystemType>
 bool Coordinator::system_has_behavior(BehaviorId behavior) const {
-    return systems.has_behavior<SystemType>(behavior);
+    return state.systems.has_behavior<SystemType>(behavior);
 }
 
 template <typename SystemType>
 std::size_t Coordinator::system_behavior_count() const {
-    return systems.behavior_count<SystemType>();
+    return state.systems.behavior_count<SystemType>();
 }
 
 template <typename Component>
 ComponentTypeId Coordinator::component_type(ComponentType<Component> type) const {
-    return components.component_type(type);
+    return state.components.component_type(type);
 }
 
 template <typename Component>
 IntentId Coordinator::create_intent(BehaviorId owner, ComponentType<Component> type, ComponentSlotId slot, IntentLifetime lifetime, Component value, IntentPriority priority) {
-    if (!behaviors.exists(owner))
+    if (!state.behaviors.exists(owner))
         throw std::runtime_error("behavior id not found");
 
     ComponentTypeId typeId = component_type(type);
 
-    if (!components.resolve_component(type, slot))
+    if (!state.components.resolve_component(type, slot))
         throw std::runtime_error("component slot not found");
 
-    if (!components.can_write(type, owner, slot))
+    if (!state.components.can_write(type, owner, slot))
         throw std::runtime_error("component write access denied");
 
-    return intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value), priority);
+    return state.intents.create(owner, ComponentType<Component>{typeId}, slot, lifetime, std::move(value), priority);
 }
 
 template <typename Component>
 const ComponentIntent<Component>& Coordinator::typed_intent(ComponentType<Component> type, IntentId id) const {
-    return intents.typed_intent(type, id);
+    return state.intents.typed_intent(type, id);
 }
 
 template <typename Component>
 void Coordinator::add_component(ComponentType<Component> type, std::string name, Component component) {
-    components.add_component(type, std::move(name), std::move(component));
+    state.components.add_component(type, std::move(name), std::move(component));
 }
 
 template <typename Component>
 bool Coordinator::has_component_named(ComponentType<Component> type, const std::string& name) const {
-    return components.has_component_named(type, name);
+    return state.components.has_component_named(type, name);
 }
 
 template <typename Component>
 Component* Coordinator::get_component_named(ComponentType<Component> type, const std::string& name) {
-    return components.get_component_named(type, name);
+    return state.components.get_component_named(type, name);
 }
 
 template <typename Component>
 const Component* Coordinator::get_component_named(ComponentType<Component> type, const std::string& name) const {
-    return components.get_component_named(type, name);
+    return state.components.get_component_named(type, name);
 }
 
 template <typename Component>
 void Coordinator::remove_component(ComponentType<Component> type, const std::string& name) {
-    ComponentTypeId typeId = components.component_type(type);
-    ComponentSlotId slot = components.component_slot(type, name);
-    std::vector<BehaviorId> affectedBehaviors = components.behaviors_with_access(type);
+    ComponentTypeId typeId = state.components.component_type(type);
+    ComponentSlotId slot = state.components.component_slot(type, name);
+    std::vector<BehaviorId> affectedBehaviors = state.components.behaviors_with_access(type);
 
     destroy_intents_for_target(typeId, slot);
 
     // ComponentRegistry clears storage access and name/slot indexes. Coordinator
     // first removes intents targeting the slot, then clears behavior signatures
     // for behaviors that no longer have any component of this type.
-    components.remove_component(type, name);
+    state.components.remove_component(type, name);
 
     for (BehaviorId behavior : affectedBehaviors) {
-        if (components.get_components(type, behavior).empty()) {
-            behaviorSignatures[behavior].reset(typeId);
+        if (state.components.get_components(type, behavior).empty()) {
+            state.behaviorSignatures[behavior].reset(typeId);
             update_system_memberships(behavior);
         }
     }
@@ -284,97 +284,97 @@ void Coordinator::remove_component(ComponentType<Component> type, const std::str
 
 template <typename Component>
 void Coordinator::grant_component_access(ComponentType<Component> type, BehaviorId behavior, const std::string& name, ComponentAccessMode mode) {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    ComponentTypeId typeId = components.component_type(type);
-    ComponentSlotId slot = components.component_slot(type, name);
+    ComponentTypeId typeId = state.components.component_type(type);
+    ComponentSlotId slot = state.components.component_slot(type, name);
 
     // Behavior existence is checked here, not in ComponentRegistry, so invalid
     // ownership is rejected at the world boundary.
-    components.grant_access(type, behavior, name, mode);
+    state.components.grant_access(type, behavior, name, mode);
 
     if (mode == ComponentAccessMode::Read)
         destroy_intents_for_owner_target(behavior, typeId, slot);
 
-    behaviorSignatures[behavior].set(typeId);
+    state.behaviorSignatures[behavior].set(typeId);
     update_system_memberships(behavior);
 }
 
 template <typename Component>
 void Coordinator::revoke_component_access(ComponentType<Component> type, BehaviorId behavior, const std::string& name) {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    ComponentTypeId typeId = components.component_type(type);
-    ComponentSlotId slot = components.component_slot(type, name);
+    ComponentTypeId typeId = state.components.component_type(type);
+    ComponentSlotId slot = state.components.component_slot(type, name);
 
     destroy_intents_for_owner_target(behavior, typeId, slot);
 
-    components.revoke_access(type, behavior, name);
+    state.components.revoke_access(type, behavior, name);
 
-    if (components.get_components(type, behavior).empty()) {
-        behaviorSignatures[behavior].reset(typeId);
+    if (state.components.get_components(type, behavior).empty()) {
+        state.behaviorSignatures[behavior].reset(typeId);
         update_system_memberships(behavior);
     }
 }
 
 template <typename Component>
 std::map<std::string, ComponentSlotId> Coordinator::get_components(ComponentType<Component> type, BehaviorId behavior) const {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    return components.get_components(type, behavior);
+    return state.components.get_components(type, behavior);
 }
 
 template <typename Component>
 const Component* Coordinator::read_component(ComponentType<Component> type, BehaviorId behavior, const std::string& name) const {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    auto available = components.get_components(type, behavior);
+    auto available = state.components.get_components(type, behavior);
     auto found = available.find(name);
 
-    if (found == available.end() || !components.can_read(type, behavior, name))
+    if (found == available.end() || !state.components.can_read(type, behavior, name))
         throw std::runtime_error("component read access denied");
 
     // Pointers are only returned after both behavior existence and access mode
     // checks succeed.
-    return components.resolve_component(type, found->second);
+    return state.components.resolve_component(type, found->second);
 }
 
 template <typename Component>
 Component* Coordinator::write_component(ComponentType<Component> type, BehaviorId behavior, const std::string& name) {
-    if (!behaviors.exists(behavior))
+    if (!state.behaviors.exists(behavior))
         throw std::runtime_error("behavior id not found");
 
-    auto available = components.get_components(type, behavior);
+    auto available = state.components.get_components(type, behavior);
     auto found = available.find(name);
 
-    if (found == available.end() || !components.can_write(type, behavior, name))
+    if (found == available.end() || !state.components.can_write(type, behavior, name))
         throw std::runtime_error("component write access denied");
 
     // Write access is stricter than resolution: resolving by slot is internal,
     // but mutable access through Coordinator must pass permission checks.
-    return components.resolve_component(type, found->second);
+    return state.components.resolve_component(type, found->second);
 }
 
 template <typename Component>
 Component* Coordinator::resolve_component(ComponentType<Component> type, ComponentSlotId slot) {
-    return components.resolve_component(type, slot);
+    return state.components.resolve_component(type, slot);
 }
 
 template <typename Component>
 const Component* Coordinator::resolve_component(ComponentType<Component> type, ComponentSlotId slot) const {
-    return components.resolve_component(type, slot);
+    return state.components.resolve_component(type, slot);
 }
 
 template <typename Component>
 bool Coordinator::can_read_component(ComponentType<Component> type, BehaviorId behavior, const std::string& name) const {
-    return components.can_read(type, behavior, name);
+    return state.components.can_read(type, behavior, name);
 }
 
 template <typename Component>
 bool Coordinator::can_write_component(ComponentType<Component> type, BehaviorId behavior, const std::string& name) const {
-    return components.can_write(type, behavior, name);
+    return state.components.can_write(type, behavior, name);
 }

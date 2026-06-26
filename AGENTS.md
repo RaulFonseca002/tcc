@@ -26,13 +26,12 @@ Superposition ECS reference lives at `/home/raul/Desktop/superposition`. Use it 
 
 ## Current Coding Milestone
 
-### M4 — Minimal Frame Loop
+### M5 — Lua Behavior Scripting
 
-Goal: introduce a minimal deterministic frame loop that calls the existing managers/systems in order while keeping adapters, events, Lua, LLM integration, simulation CLI, and physical-world application out of scope.
+Goal: allow Lua behavior code to create new intents through controlled APIs while keeping existing intent records immutable and world/registry internals protected.
 
 Codex should focus only on:
 
-- `Coordinator.hpp`
 - `Ids.hpp`
 - `IntentLifetime.hpp`
 - `IntentExpiration.hpp`
@@ -40,22 +39,27 @@ Codex should focus only on:
 - `BehaviorRegistry.hpp`
 - `ComponentStorage.hpp`
 - `ComponentRegistry.hpp`
+- `world/WorldState.hpp`
+- `world/Coordinator.hpp`
+- `world/World.hpp`
 - `SystemRegistry.hpp`
 - `Runtime.hpp`
+- `scripting/` headers and sources when the Lua boundary design requires them
+- `world/World.cpp`
 - `Runtime.cpp`
-- existing M1/M2/M3 `.cpp` files only when needed for frame-loop integration
+- existing M1/M2/M3/M4 `.cpp` files only when needed for scripting integration
 - CMake boilerplate
-- test files for the above, especially `test_runtime.cpp` and regressions in existing M1/M2/M3 tests
+- test files for the above, especially `test_lua_behavior.cpp` and regressions in existing M1/M2/M3/M4 tests
 
-Do not create event, adapter, Lua, LLM, simulation CLI, MQTT, voice, or final Liquid Layer application systems yet.
-M4 is limited to deterministic frame ordering over existing managers/systems. Do not add adapter commands or physical-world application.
+Do not create event, adapter, LLM, simulation CLI, MQTT, voice, or final Liquid Layer application systems yet.
+M5 is limited to controlled Lua behavior scripting. Lua may create new intents through approved APIs; it must not mutate existing intents, component storage internals, registries, coordinator internals, or physical-world state directly.
 
 ---
 
-## Current Minimal Repository Shape and M4 Additions
+## Current Minimal Repository Shape and M5 Additions
 
 Start small. Do not create folders before they are needed.
-The M4 runtime files listed here are allowed additions when implementing the current milestone.
+The M5 scripting folders listed here are allowed additions when implementing the current milestone.
 
 ```text
 liquid/
@@ -72,32 +76,40 @@ liquid/
       IntentExpiration.hpp
       ComponentStorage.hpp
       ComponentRegistry.hpp
-      Coordinator.hpp
+      world/
+        WorldState.hpp
+        Coordinator.hpp
+        World.hpp
       BehaviorRegistry.hpp
       IntentRegistry.hpp
       SystemRegistry.hpp
       Runtime.hpp
+      scripting/
 
   src/
     ComponentRegistry.cpp
-    Coordinator.cpp
+    world/
+      Coordinator.cpp
+      World.cpp
     BehaviorRegistry.cpp
     IntentRegistry.cpp
     SystemRegistry.cpp
     IntentExpiration.cpp
     Runtime.cpp
+    scripting/
 
   tests/
     test_ids.cpp
     test_component_storage.cpp
     test_component_registry.cpp
-    test_coordinator.cpp
+    test_world.cpp
     test_behavior_registry.cpp
     test_intent_registry.cpp
     test_system_registry.cpp
     test_intent_expiration.cpp
     test_intent_resolution.cpp
     test_runtime.cpp
+    test_lua_behavior.cpp
     test_stress.cpp
 ```
 
@@ -144,10 +156,10 @@ Do not silently implement large behavior or runtime logic.
 - `IntentRegistry` owns intent data, indexes, expiration cleanup during resolution, and deterministic intent selection.
 - Intent targets use `ComponentTypeId + ComponentSlotId` for component-state requests and are indexed as type -> slot -> intent IDs.
 - `IntentRegistry` does not validate whether an owner `BehaviorId` exists.
-- Valid behavior ownership should be enforced before calling intent APIs, normally through `Coordinator` or behavior creation flow.
-- Coordinator-created component intents require current write access to their target slot.
-- Coordinator cleanup destroys intents whose target slot is removed or whose owner loses write access to that target.
-- `Coordinator::create_behavior()` must create the matching intent pool, and behavior destruction must remove that pool, so behavior state and intent-manager behavior pools stay aligned.
+- Valid behavior ownership should be enforced before calling intent APIs, normally through `World` or behavior creation flow.
+- World-created component intents require current write access to their target slot.
+- World cleanup destroys intents whose target slot is removed or whose owner loses write access to that target.
+- `World::create_behavior()` must create the matching intent pool, and behavior destruction must remove that pool, so behavior state and intent-manager behavior pools stay aligned.
 - Manager command functions such as `IntentRegistry::destroy(IntentId)` may assume valid live handles from the project flow; query functions such as `exists(...)` can still return false safely.
 - Prefer making invalid states unreachable at the call boundary over repeating defensive checks in every lower-level manager.
 
@@ -179,7 +191,7 @@ Current planned ID model:
 - `ComponentRegistry` owns component type IDs, the type-erased storage map, and the `ComponentName <-> ComponentSlotId` indexes for each component type.
 - `ComponentStorage<T>` owns component slots, slot recycling, and access records for that one component type.
 - Behavior access is tracked inside the typed storage as `BehaviorId -> vector<ComponentSlotAccess>`, where each access records a slot and read/write mode.
-- `Coordinator` is the outside-facing world interface. It owns behavior signatures, behavior existence checks, cross-manager permission checks, and cleanup sequencing.
+- In M4, `World` is the outside-facing state boundary and owns `WorldState`. `Runtime` advances the world through deterministic frames. `Coordinator` is internal consistency logic over `WorldState`.
 - Systems request `name -> ComponentSlotId` maps for a behavior and component type. Behavior permission checks happen before component slots are handed out or resolved.
 - Completed M1 system coordination stores inherited `System` objects by concrete system type, `Signature` requirements, and behavior-to-system membership. Coordinator updates membership when behavior signatures change.
 - Physical addresses or adapter references may belong inside component data when needed; permissions belong in the behavior/type/slot access table.
@@ -211,23 +223,23 @@ Avoid:
 
 ## Current Success Criteria
 
-M4 is working when tests can prove:
+M5 is working when tests can prove:
 
-1. A frame context carries deterministic frame/time input.
-2. The minimal loop calls cleanup/resolution/system coordination in documented order.
-3. The loop can record a small frame log stub without applying adapter commands.
-4. Existing M1/M2/M3 behavior, component, system-membership, intent lifetime, cleanup, resolution, recycling, and sanitizer-backed stress tests still pass.
+1. Lua behavior code can create a new intent through a controlled API.
+2. Lua cannot mutate an existing intent record after creation.
+3. Lua cannot bypass `World` permissions or write directly into registries/component storage.
+4. Script-created intents follow the existing owner, target, lifetime, priority, cleanup, and resolution rules.
+5. Existing M1/M2/M3/M4 behavior, component, system-membership, intent lifetime, cleanup, resolution, runtime, world, recycling, and sanitizer-backed stress tests still pass.
 
 ---
 
 ## What Not to Build Yet
 
-Do not add these during M4:
+Do not add these during M5:
 
 - `events/`
 - `systems/`
 - `adapters/`
-- Lua integration
 - LLM integration
 - simulation CLI
 - MQTT
@@ -237,11 +249,12 @@ Do not add these during M4:
 ## Future Notes
 
 - M1 is complete: ECS-style behavior identity, typed component storage/registry, coordinator-owned signatures, intent owner pools, system membership, expanded assert tests, stress tests, and opt-in sanitizer builds are in place.
-- M2 intent lifetime and expiration is complete and uses `Coordinator` as the public world interface instead of bypassing behavior ownership checks.
+- M2 intent lifetime and expiration is complete and now flows through `World` at the public boundary.
 - M3 intent resolution is complete: behavior/type access produces `name -> ComponentSlotId`, `IntentRegistry` returns `name -> selected IntentId`, and later application resolves component data through coordinator/registry APIs.
-- System coordination is implemented as template-addressed system registration, signatures, behavior membership, and membership callbacks. Execution/frame ordering belongs to the current M4 deterministic runtime/frame-loop milestone.
-- When systems are introduced, `Coordinator` should remain responsible for registering systems, storing or forwarding system `Signature`s, matching behavior signatures to systems, and updating system membership whenever component access changes or a behavior/component is destroyed.
-- System execution/frame ordering is missing by design; it belongs with the current M4 deterministic runtime/frame-loop milestone after the M1 system registry/interface exists.
+- System coordination is implemented as template-addressed system registration, signatures, behavior membership, and membership callbacks.
+- M4 minimal frame loop is complete: `Runtime` advances `World`, records a small frame log, resolves explicit intent requests, and runs systems through `System::run(World&, FrameNumber, IntentTime)` in deterministic registration order.
+- M5 Lua behavior scripting is current: Lua may create new intents only through controlled APIs and must not mutate existing intent records or bypass `World`.
+- `Coordinator` remains responsible internally for registering systems, storing or forwarding system `Signature`s, matching behavior signatures to systems, and updating system membership whenever component access changes or a behavior/component is destroyed.
 - Future systems, runtime loops, and adapters should not store direct component pointers as long-term state; use behavior IDs, component type handles, component names, and slots as handles that can be validated each frame.
 
 Only add these when `DEVELOPMENT_TRACKING.md` says the next milestone requires them.

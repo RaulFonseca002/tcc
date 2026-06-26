@@ -10,6 +10,7 @@ namespace liquid {
 
 using BehaviorId = std::uint16_t;
 using IntentId = std::uint32_t;
+using FrameNumber = std::uint64_t;
 using ComponentName = std::string;
 using Slot = std::uint16_t;
 using ComponentTypeId = std::uint16_t;
@@ -82,6 +83,7 @@ using liquid::ComponentSlotId;
 using liquid::ComponentTarget;
 using liquid::ComponentType;
 using liquid::ComponentTypeId;
+using liquid::FrameNumber;
 using liquid::InvalidComponentSlotId;
 using liquid::InvalidComponentTypeId;
 using liquid::IntentId;

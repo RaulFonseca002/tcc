@@ -1,10 +1,10 @@
 # Liquid Concepts and Architecture v0.2
 
-**Status:** Living baseline during M3 intent resolution
+**Status:** Living baseline during M5 Lua behavior scripting
 **Scope:** Conceptual architecture, vocabulary, and accepted design direction  
 **Project:** Liquid Layer  
 **Engine / framework:** Liquid  
-**Current development stage:** Solid, M4 minimal frame loop
+**Current development stage:** Solid, M5 Lua behavior scripting
 **Date:** June 2026
 
 ---
@@ -25,7 +25,7 @@ The project is divided into three conceptual layers.
 |---|---|---|
 | **Liquid Layer** | Final application/research project focused on adaptive smart environments for neurodivergent people. | Future project layer |
 | **Liquid** | Standalone engine/framework/runtime used by Liquid Layer and by simulation/data-collection tools. | Engine repo |
-| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1-M3 complete; M4 current |
+| **Solid** | First implementation stage of Liquid: deterministic ECS-inspired runtime. | M1-M4 complete; M5 current |
 | **Liquid stage** | Later implementation stage: adaptive/LLM layer that creates, modifies, and explains Solid blocks. | Future focus |
 
 The internal code should not overuse metaphorical names. Folder and file names should describe responsibility: `vocabulary`, `core`, `runtime`, `events`, `behaviors`, `intents`, `systems`, and `adapters`.
@@ -233,7 +233,8 @@ Accepted baseline:
 - behavior state, capabilities, access, and system eligibility are represented through ordinary shared named component instances plus access records;
 - access relationships connect a behavior to a named component with read/write permissions;
 - behavior-facing queries expose `name -> ComponentSlotId`, where the name is the user/device-facing key and the slot is the typed storage handle;
-- `Coordinator` owns cross-manager behavior permission checks and behavior signatures;
+- `World` is the public state boundary and owns the world-local state;
+- `Coordinator` contains the internal cross-manager behavior permission, cleanup, and signature logic;
 - trusted component resolution uses the registered component type handle plus the slot after coordinator validation;
 - intents are immutable proposal records, not component rows;
 - intent target keys should identify the component instance or external effect being changed;
@@ -348,12 +349,16 @@ Folder responsibility:
 - Access relationships hold permissions between behaviors and named component instances.
 - `ComponentType<T>` is the typed runtime handle returned by explicit component registration.
 - Component type lookup is template-driven in M1, following the Superposition-style manager flow.
-- `Coordinator` owns behavior signatures, behavior existence checks, cross-manager permission checks, and cleanup sequencing.
-- Systems are registered by concrete type in M1 and store `Signature` requirements, behavior membership, and membership callbacks.
+- `Runtime` owns the minimal deterministic frame loop and advances a `World`.
+- `World` owns `WorldState`: component, behavior, intent, and system registries plus behavior signatures.
+- World-layer headers and sources live under a dedicated `world` folder because `World` is the public state boundary, while `Runtime` remains separate frame orchestration.
+- `Coordinator` operates internally on `WorldState` for behavior existence checks, cross-manager permission checks, cleanup sequencing, registry forwarding, and system membership.
+- Systems are registered by concrete type and store `Signature` requirements, behavior membership, and membership callbacks.
+- M4 runs systems in deterministic registration order with `System::run(World&, FrameNumber, IntentTime)`.
 - Systems should own behavior logic.
 - Intents are immutable proposed component-state changes or effects, not component rows and not immediate actions.
-- Intent owner pools are aligned with behavior creation/destruction through `Coordinator`.
-- Coordinator-created component intents require write access and are cleaned up when their target slot or owner write access becomes invalid.
+- Intent owner pools are aligned with behavior creation/destruction through `World`.
+- World-created component intents require write access and are cleaned up when their target slot or owner write access becomes invalid.
 - The completed M1 test suite uses assert binaries, deterministic stress coverage, and an opt-in AddressSanitizer/UBSan CMake mode.
 - Intent resolution should be target-oriented; current M3 resolves one component type from `ComponentName -> ComponentSlotId` into `ComponentName -> IntentId`.
 - A selected intent handle later becomes a resolved effect, then an adapter command/action.

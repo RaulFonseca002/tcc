@@ -1,7 +1,8 @@
 #include "liquid/IntentExpiration.hpp"
 
-#include "liquid/Coordinator.hpp"
+#include "liquid/world/Coordinator.hpp"
 #include "liquid/IntentRegistry.hpp"
+#include "liquid/world/World.hpp"
 
 namespace liquid {
 
@@ -57,6 +58,26 @@ std::size_t destroy_expired_intents(Coordinator& coordinator, IntentTime now) {
 
     for (IntentId id : expired)
         coordinator.destroy_intent(id);
+
+    return expired.size();
+}
+
+std::vector<IntentId> expired_intent_ids(const World& world, IntentTime now) {
+    std::vector<IntentId> expired;
+
+    for (IntentId id : world.live_intent_ids()) {
+        if (lifetime_is_expired(world.intent(id).lifetime, now))
+            expired.push_back(id);
+    }
+
+    return expired;
+}
+
+std::size_t destroy_expired_intents(World& world, IntentTime now) {
+    std::vector<IntentId> expired = expired_intent_ids(world, now);
+
+    for (IntentId id : expired)
+        world.destroy_intent(id);
 
     return expired.size();
 }

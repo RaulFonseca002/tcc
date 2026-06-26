@@ -9,10 +9,12 @@ option(LIQUID_ENABLE_SANITIZERS "Build Liquid and tests with AddressSanitizer an
 add_library(liquid
     src/BehaviorRegistry.cpp
     src/ComponentRegistry.cpp
-    src/Coordinator.cpp
+    src/world/Coordinator.cpp
     src/IntentExpiration.cpp
     src/IntentRegistry.cpp
+    src/Runtime.cpp
     src/SystemRegistry.cpp
+    src/world/World.cpp
 )
 
 target_compile_features(liquid PUBLIC cxx_std_20)
@@ -49,7 +51,8 @@ if(BUILD_TESTING)
         test_intent_expiration
         test_intent_registry
         test_intent_resolution
-        test_coordinator
+        test_runtime
+        test_world
         test_system_registry
         test_stress
     )

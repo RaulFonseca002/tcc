@@ -102,23 +102,30 @@ liquid/
       Ids.hpp
       ComponentStorage.hpp
       ComponentRegistry.hpp
-      Coordinator.hpp
+      world/
+        WorldState.hpp
+        Coordinator.hpp
+        World.hpp
       BehaviorRegistry.hpp
       IntentRegistry.hpp
       SystemRegistry.hpp
+      Runtime.hpp
 
   src/
     ComponentRegistry.cpp
-    Coordinator.cpp
+    world/
+      Coordinator.cpp
+      World.cpp
     BehaviorRegistry.cpp
     IntentRegistry.cpp
     SystemRegistry.cpp
+    Runtime.cpp
 
   tests/
     test_ids.cpp
     test_component_storage.cpp
     test_component_registry.cpp
-    test_coordinator.cpp
+    test_world.cpp
     test_behavior_registry.cpp
     test_intent_registry.cpp
     test_system_registry.cpp
@@ -142,8 +149,8 @@ Goal:
 Build the smallest core that can create behaviors, create immutable intents owned by behaviors, create shared named component instances, query components by registered type handle and name, track behavior access, and clean up correctly.
 
 Components are shared plain data instances queried by `ComponentType<T>` handles and component names. `ComponentStorage<T>` is the typed slot pool for one component type and owns access records for slots in that storage. `ComponentRegistry` owns component type IDs, the type-erased storage map, and globally unique names per component type.
-Behaviors do not own components exclusively; they receive read/write access to named components. Access is stored in the typed storage as `BehaviorId -> vector<ComponentSlotAccess>`, where each access records a slot and read/write mode. Systems see this through `Coordinator`/`ComponentRegistry` as `name -> ComponentSlotId` for a behavior and component type.
-Component types are registered with explicit stable names in M1 and return typed runtime handles. `Signature` is the shared component-type bitset used by both behavior composition and system requirements. `Coordinator` owns behavior signatures, behavior existence checks, cross-manager access checks, and cleanup sequencing.
+Behaviors do not own components exclusively; they receive read/write access to named components. Access is stored in the typed storage as `BehaviorId -> vector<ComponentSlotAccess>`, where each access records a slot and read/write mode. Systems see this through `World`/`ComponentRegistry` as `name -> ComponentSlotId` for a behavior and component type.
+Component types are registered with explicit stable names in M1 and return typed runtime handles. `Signature` is the shared component-type bitset used by both behavior composition and system requirements. As of M4, `World` owns this state and `Coordinator` performs the cross-manager consistency logic internally.
 Packed composite keys were used by the original M1 owner/local intent ID prototype; current intent IDs are global recyclable record handles while component access uses behavior/type/slot indexing.
 System coordination is part of the M1 ECS core. `SystemRegistry` registers `System` instances by concrete system type, stores each system's `Signature` and matching behavior membership, and emits membership callbacks when behaviors enter or leave a system. `Coordinator` compares behavior signatures to system signatures and updates membership when access or lifetimes change.
 
@@ -151,9 +158,9 @@ Current implementation notes:
 
 - `ComponentType<T>` is the public typed handle returned from `register_component<T>(...)`.
 - `TypeName -> ComponentTypeId` is resolved at registration; `ComponentTypeId` is then the internal key for storages, name maps, and behavior signatures.
-- `Coordinator` is the outside-facing interface for creating, managing, reading/writing, and deleting behaviors, intents, and components.
-- Component removal clears intents targeting the removed slot, clears access before recycling it, erases name/slot indexes, and lets `Coordinator` reset affected behavior signatures.
-- Coordinator-created component intents require write access and are removed when the owner loses write access to the target.
+- `World` is the outside-facing interface for creating, managing, reading/writing, and deleting behaviors, intents, and components.
+- Component removal clears intents targeting the removed slot, clears access before recycling it, erases name/slot indexes, and lets internal coordinator logic reset affected behavior signatures.
+- World-created component intents require write access and are removed when the owner loses write access to the target.
 - Behavior destruction clears component access maps, erases behavior signatures, destroys owned intents, and recycles the behavior ID.
 - System execution is not part of M1. Systems are template-addressed by concrete type and currently have `Signature` requirements, matching behavior membership, and membership-event callbacks.
 - `LIQUID_ENABLE_SANITIZERS` is available as an opt-in CMake option for AddressSanitizer and UBSan on Clang/GCC.
@@ -161,10 +168,10 @@ Current implementation notes:
 
 Future tracking:
 
-- Completed M2 intent lifetime and expiration keeps valid behavior ownership and intent cleanup enforced through `Coordinator`.
+- Completed M2 intent lifetime and expiration keeps valid behavior ownership and intent cleanup enforced through the current public world boundary.
 - Future resolution systems should consume `name -> ComponentSlotId` maps and resolve component data through coordinator/registry APIs.
 - M1 system coordination now covers inherited system objects, `Signature` requirements, behavior-to-system matching, and system membership updates.
-- When systems exist, `Coordinator` should remain the cross-manager boundary that updates system membership after behavior signatures change through access grants, access revokes, component removal, or behavior destruction.
+- `Coordinator` remains the internal cross-manager logic that updates system membership after behavior signatures change through access grants, access revokes, component removal, or behavior destruction.
 - Deterministic system execution order and frame-loop scheduling are future runtime responsibilities after the M1 system registry/interface exists.
 - Future runtime loops, systems, and adapters should not keep long-lived raw component pointers; prefer behavior IDs, typed component handles, names, and slots that can be revalidated.
 
@@ -187,20 +194,23 @@ Files expected:
 include/liquid/Ids.hpp
 include/liquid/ComponentStorage.hpp
 include/liquid/ComponentRegistry.hpp
-include/liquid/Coordinator.hpp
+include/liquid/world/WorldState.hpp
+include/liquid/world/Coordinator.hpp
+include/liquid/world/World.hpp
 include/liquid/BehaviorRegistry.hpp
 include/liquid/IntentRegistry.hpp
 include/liquid/SystemRegistry.hpp
 
 src/ComponentRegistry.cpp
-src/Coordinator.cpp
+src/world/Coordinator.cpp
+src/world/World.cpp
 src/BehaviorRegistry.cpp
 src/IntentRegistry.cpp
 src/SystemRegistry.cpp
 
 tests/test_component_storage.cpp
 tests/test_component_registry.cpp
-tests/test_coordinator.cpp
+tests/test_world.cpp
 tests/test_behavior_registry.cpp
 tests/test_intent_registry.cpp
 tests/test_system_registry.cpp
@@ -246,7 +256,7 @@ Out of scope:
 
 Completion note:
 
-M2 adds explicit persistent/until-time intent lifetime metadata, typed immutable intent records, owner and target indexes, stateless expiration helpers, Coordinator-facing expiration cleanup, and Coordinator cleanup for invalidated intent targets/write access.
+M2 adds explicit persistent/until-time intent lifetime metadata, typed immutable intent records, owner and target indexes, stateless expiration helpers, world-facing expiration cleanup, and internal cleanup for invalidated intent targets/write access.
 
 Goal:
 
@@ -263,10 +273,10 @@ Expected concepts:
 Current implementation direction:
 
 - Keep intent lifetime as intent metadata, not component storage.
-- Keep `Coordinator` as the public boundary for behavior-owned intent creation and cleanup.
+- Keep the public world boundary responsible for behavior-owned intent creation and cleanup.
 - Keep `IntentRegistry` as the source of truth for typed intent records, with secondary indexes for owner cleanup and `ComponentTypeId -> ComponentSlotId` target lookup.
 - M2 baseline: keep expiration classification outside `IntentRegistry`; the registry stores data and deletes records when asked. M3 supersedes this only for resolution-time cleanup inside `IntentRegistry::resolve(...)`.
-- Require current write access when `Coordinator` creates component-target intents.
+- Require current write access when `World` creates component-target intents.
 - Destroy coordinator-owned intents when their target component slot is removed or when their owner loses write access to that target.
 - Add deterministic expiration logic that receives explicit time/frame input rather than depending on wall-clock globals.
 - Classify expired intents without mutating their semantic request contents or registry indexes.
@@ -344,7 +354,11 @@ tests/test_intent_resolution.cpp
 
 ### M4 — Minimal Frame Loop
 
-**Status:** Current
+**Status:** Done
+
+Completion note:
+
+M4 adds `World` as the public state boundary, `WorldState` as the owner of world-local registries/signatures, internal coordinator logic over that state, deterministic registration-ordered system execution through `System::run(World&, FrameNumber, IntentTime)`, and `Runtime::run_frame(...)` with expiration, explicit intent resolution requests, and a small frame log. The World layer now lives under dedicated `world` folders.
 
 Goal:
 
@@ -365,24 +379,31 @@ This is the first milestone where a `runtime/` folder may become justified.
 Current implementation direction:
 
 - Keep the loop deterministic and explicit; no wall-clock globals.
-- Use existing managers rather than adding new behavior/component/intent ownership rules.
-- Call intent cleanup/resolution through the existing `IntentRegistry`/`Coordinator` surfaces.
-- Add only the minimal frame context/log shape needed to prove ordering.
+- `World` owns `WorldState` and is the public state boundary.
+- `Runtime` owns a `World` and advances it through deterministic frames.
+- Keep `Coordinator` as internal consistency logic for behavior signatures, permissions, cleanup, system membership, and registry forwarding.
+- Call expiration through the world-based expiration helper, then resolve explicit frame requests through `World::resolve_intents(...)`.
+- Run systems through `SystemRegistry` in deterministic registration order with `System::run(World&, FrameNumber, IntentTime)`.
+- Add only the minimal frame log shape needed to prove ordering and selected intent handles.
 - Do not add adapters, events, Lua, LLM integration, simulation CLI, or physical-world application.
 
 Likely new files:
 
 ```text
 include/liquid/Runtime.hpp
+include/liquid/world/WorldState.hpp
+include/liquid/world/World.hpp
 src/Runtime.cpp
+src/world/World.cpp
 tests/test_runtime.cpp
+tests/test_world.cpp
 ```
 
 ---
 
 ### M5 — Lua Behavior Scripting
 
-**Status:** Planned
+**Status:** Current
 
 Goal:
 
@@ -391,6 +412,21 @@ Allow Lua behaviors to create intents through controlled APIs.
 Important rule:
 
 Lua creates new intents. It does not mutate existing intents.
+
+Current implementation direction:
+
+- Keep Lua behind controlled APIs that create new intents through `World`.
+- Do not let Lua mutate existing intents, registries, component storage internals, or coordinator state directly.
+- Decide the minimal Lua binding/runtime surface before adding a large scripting subsystem.
+- Keep adapters, LLM integration, simulation CLI, MQTT, voice, and final Liquid Layer application concepts out of scope.
+
+Likely new files:
+
+```text
+include/liquid/scripting/
+src/scripting/
+tests/test_lua_behavior.cpp
+```
 
 ---
 
@@ -449,11 +485,12 @@ When a milestone is completed:
 
 ## Current Notes
 
-- The current coding focus is M4 minimal frame loop.
+- The current coding focus is M5 Lua behavior scripting.
 - M1 modified ECS core is complete and should be treated as foundation, not active scope.
 - M2 now uses typed intent-record storage with owner and component-target indexes; `IntentId` no longer encodes the owner behavior.
 - M3 registry-owned intent resolution is complete and should be treated as foundation, not active scope.
-- M4 should introduce the smallest deterministic frame loop without adapters, events, Lua, LLM integration, simulation CLI, or physical-world application.
+- M4 is complete: it introduces the smallest deterministic frame loop, `World` as public state boundary, explicit frame input, expiration, intent resolution requests, registration-ordered system execution, and a small frame log.
+- M5 should introduce only the controlled Lua behavior scripting boundary needed for behaviors to create intents.
 - The project owner will implement core logic manually.
 - Codex should generate headers, tests, CMake, and boilerplate unless explicitly asked to implement logic.
 - The current structure is intentionally small to keep the project controllable.
@@ -461,7 +498,7 @@ When a milestone is completed:
 - For component-manager work, keep the distinction clear: component type is the system query signature; component names are the user/device-facing way to find shared component instances.
 - Prefer registered component IDs for type lookup, while using string names for user-created component instances.
 - Access relationships carry read/write permissions and are exposed as `name -> ComponentSlotId` maps for each behavior and component type.
-- Coordinator-created component intents require current write access, and Coordinator removes them when target slots or owner write access become invalid.
+- World-created component intents require current write access, and internal coordinator logic removes them when target slots or owner write access become invalid.
 - Use named constants for packed key shifts/masks instead of repeating raw numeric literals when a packed key is still useful.
 - Intents are not component rows. They are immutable proposals to change component state or emit effects.
 - Intent lifetime is metadata on immutable intent records, not component storage.

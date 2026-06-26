@@ -1,4 +1,4 @@
-#include "liquid/Coordinator.hpp"
+#include "liquid/world/World.hpp"
 #include "liquid/IntentExpiration.hpp"
 #include "liquid/IntentRegistry.hpp"
 
@@ -66,33 +66,33 @@ int main()
     }
 
     {
-        Coordinator coordinator;
-        ComponentType<Light> lightType = coordinator.register_component<Light>("Light");
+        World world;
+        ComponentType<Light> lightType = world.register_component<Light>("Light");
 
-        coordinator.add_component(lightType, "officeLight", Light{50});
+        world.add_component(lightType, "officeLight", Light{50});
 
-        BehaviorId behavior = coordinator.create_behavior();
-        coordinator.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
+        BehaviorId behavior = world.create_behavior();
+        world.grant_component_access(lightType, behavior, "officeLight", ComponentAccessMode::ReadWrite);
 
-        ComponentSlotId slot = coordinator.get_components(lightType, behavior).at("officeLight");
+        ComponentSlotId slot = world.get_components(lightType, behavior).at("officeLight");
 
-        IntentId timed = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::until_time(5), Light{80});
-        IntentId persistent = coordinator.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{20});
+        IntentId timed = world.create_intent(behavior, lightType, slot, IntentLifetime::until_time(5), Light{80});
+        IntentId persistent = world.create_intent(behavior, lightType, slot, IntentLifetime::persistent(), Light{20});
 
-        assert(coordinator.intent_target(timed) == (ComponentTarget{lightType.id, slot}));
-        assert(coordinator.intents_for(lightType.id, slot).size() == 2);
-        assert(coordinator.typed_intent(lightType, timed).value.brightness == 80);
+        assert(world.intent_target(timed) == (ComponentTarget{lightType.id, slot}));
+        assert(world.intents_for(lightType.id, slot).size() == 2);
+        assert(world.typed_intent(lightType, timed).value.brightness == 80);
 
-        std::vector<IntentId> expired = expired_intent_ids(coordinator, 5);
+        std::vector<IntentId> expired = expired_intent_ids(world, 5);
         assert(expired.size() == 1);
         assert(contains(expired, timed));
 
-        assert(destroy_expired_intents(coordinator, 5) == 1);
-        assert(!coordinator.intent_exists(timed));
-        assert(coordinator.intent_exists(persistent));
+        assert(destroy_expired_intents(world, 5) == 1);
+        assert(!world.intent_exists(timed));
+        assert(world.intent_exists(persistent));
 
-        coordinator.destroy_intent(persistent);
-        assert(!coordinator.intent_exists(persistent));
+        world.destroy_intent(persistent);
+        assert(!world.intent_exists(persistent));
     }
 
     return 0;
